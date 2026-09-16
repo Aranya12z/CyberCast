@@ -1,0 +1,21 @@
+[33mcommit 155be954505b7b82edff06a9244087a3d2108649[m
+Author: Aranya12z <aranyadebkesh@gmail.com>
+Date:   Thu Sep 17 00:40:33 2026 +0530
+
+    docs: organize project documentation
+
+A	AGENTS.md
+A	CURRENT_STATE.md
+M	README.md
+A	docs/ADRS.md
+A	docs/AGENTS.md
+A	docs/API_SPEC.md
+A	docs/ARCHITECTURE.md
+A	docs/BACKEND_SPEC.md
+A	docs/DATA_SCHEMA.md
+A	docs/FRONTEND_SPEC.md
+A	docs/GIS_SPEC.md
+A	docs/INTEGRATION_SPEC.md
+A	docs/ML_GIS_CONTRACTS.md
+A	docs/ML_SPEC.md
+A	docs/SETUP.md

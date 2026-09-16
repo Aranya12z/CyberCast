@@ -29,6 +29,7 @@ This project is split into **role-scoped specs**. Each file is written so that a
 | `INTEGRATION_SPEC.md` | P1 | Cross-cutting rules: contract-first process, team boundaries, AI-agent guardrails |
 | `ADRS.md` | P1 | Architecture Decision Records for major choices |
 | `SETUP.md` | Shared | Repo layout, local dev setup, environment variables |
+| `AGENTS.md` | P1 | **Read this first if you're an AI coding agent.** Entry-point hierarchy that routes you to your role file and the shared contracts you need. |
 
 ## Team → File Map
 
@@ -37,7 +38,7 @@ This project is split into **role-scoped specs**. Each file is written so that a
 - **P3 — GIS:** `GIS_SPEC.md` (+ reads `ML_GIS_CONTRACTS.md`, `API_SPEC.md`).
 - **P4 — Frontend:** `FRONTEND_SPEC.md` (+ reads `API_SPEC.md` only — never touches backend/ML/GIS code).
 - **P5 — Backend Engineering:** `BACKEND_SPEC.md` (+ reads/enforces `API_SPEC.md`, `DATA_SCHEMA.md`, `ML_GIS_CONTRACTS.md`).
-- **P6 — Domain/Product:** reads `ARCHITECTURE.md` §33 (Judge-Defensibility) and §17 (Explainability) — validates real-world plausibility, does not own technical architecture.
+- **P6 — Domain/Product:** reads `ARCHITECTURE.md` §9 (Explainability) and `INTEGRATION_SPEC.md` §5 (Judge-Defensibility Checklist) — validates real-world plausibility, does not own technical architecture.
 
 ## Categories to never blur (used throughout every doc)
 - **IMPLEMENTED** — what the current prototype actually does today.
