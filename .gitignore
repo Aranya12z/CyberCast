@@ -1,0 +1,47 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Node / React
+node_modules/
+dist/
+build/
+.vite/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# ML artifacts
+*.pkl
+*.joblib
+*.onnx
+
+# Data
+*.csv
+*.parquet
+*.sqlite
+*.db
+
+# Generated files
+coverage/
+reports/
