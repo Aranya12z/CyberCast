@@ -21,6 +21,16 @@ Do not skip directly to a role-specific file.
 
 The role-specific specifications assume that you already understand the boundaries defined by these four files.
 
+## Shared Repository Infrastructure
+
+* `.gitignore` and `.env.example` are shared repository infrastructure.
+* Do not modify them casually or as part of unrelated feature work.
+* If a new environment variable is required, add it to `.env.example` and document its purpose.
+* If a new ignore rule is required, verify that it does not hide files needed by another component.
+* Do not commit `.env` files, secrets, API keys, passwords, tokens, or other credentials.
+* Prefer discussing changes to shared infrastructure with P1 before modifying it.
+
+
 ### Important path rule
 
 The root `README.md` describes the whole project.
@@ -30,6 +40,46 @@ All technical specifications and architecture documents are under `docs/`.
 Do not create a second project README inside `docs/` unless P1 explicitly decides otherwise.
 
 ---
+### Repository Structure
+
+The repository is organized by **technical component**, not by team member.
+
+Expected top-level structure:
+
+```text
+CyberCast/
+├── AGENTS.md
+├── CURRENT_STATE.md
+├── README.md
+├── .gitignore
+├── .env.example
+├── docs/
+├── backend/
+├── frontend/
+├── ml/
+├── gis/
+└── scripts/
+```
+
+Component ownership:
+
+* `backend/` — Backend/API implementation
+* `frontend/` — React dashboard and UI
+* `ml/` — ML models, feature engineering, training, and inference
+* `gis/` — GIS/spatial processing and GeoJSON generation
+* `scripts/` — Development, data, and utility scripts
+* `docs/` — Project specifications and documentation
+
+### Structure Rules
+
+* Do not create directories named after team members, roles, or branches such as `p1/`, `p2/`, `p3/`, etc.
+* Do not create new top-level application directories without coordinating with P1.
+* Keep implementation files inside the appropriate technical component.
+* Before creating a new subdirectory, check the relevant specification and existing repository structure.
+* Internal subdirectories may be created when required by the component's implementation, provided they remain within the component's ownership boundary.
+* Prefer extending the existing structure over introducing a new architectural pattern.
+* If the intended structure conflicts with a specification or existing architecture, flag the conflict rather than silently restructuring the repository.
+
 
 ## 2. Route Yourself to the Correct Role File
 
