@@ -1,173 +1,55 @@
-# Predictive Analytics Framework for Cybercrime Cash-Withdrawal Forecasting
+# Predictive Cybercrime Withdrawal Intelligence System — Project Docs
 
-**Smart India Hackathon 2026**
+## Problem Statement
+Development of a Predictive Analytics Framework for Cybercrime Complaints to Forecast Likely Cash Withdrawal Locations in Advance, Enabling Generation of Actionable Intelligence for Timely and Proactive Cybercrime Intervention.
 
-A predictive intelligence layer that sits over the existing cybercrime and
-financial ecosystem to forecast likely cash-withdrawal locations after a
-cybercrime complaint — enabling investigators and financial institutions
-to act **before** a withdrawal happens, not just after.
+## One-line North Star
+> A predictive intelligence layer that helps existing cybercrime and financial systems act **before the next withdrawal happens.**
 
-> This is not a complaint portal, not a generic crime dashboard, and not
-> "just an ML model." It's the intelligence layer that turns a complaint
-> into ranked, explained, time-windowed, actionable predictions.
+This is **not** a cybercrime complaint portal, not a generic crime dashboard, not "just an ML model," and not an ATM heatmap. It is a layer that turns complaints + transaction/location signals into **ranked, explained, time-boxed intelligence**.
 
 ---
 
-## Problem statement
+## How to use this doc set
 
-Development of a Predictive Analytics Framework for Cybercrime Complaints
-to Forecast Likely Cash Withdrawal Locations in Advance, Enabling
-Generation of Actionable Intelligence for Timely and Proactive Cybercrime
-Intervention.
+This project is split into **role-scoped specs**. Each file is written so that a human teammate *or* an AI coding agent (Claude Code, Cursor, etc.) working on that slice has everything it needs — and nothing it needs to guess at — without wandering into another owner's territory.
 
-We are **not** rebuilding NCRP. This system consumes complaint,
-transaction, ATM, and geospatial data and produces risk-ranked
-intelligence for existing stakeholders to act on.
+**Golden rule for every agent/teammate:** if a proposed change conflicts with `API_SPEC.md`, `DATA_SCHEMA.md`, or `ML_GIS_CONTRACTS.md`, **the contract wins**. Propose a contract change explicitly (via an ADR) rather than silently diverging.
 
-## How it works, conceptually
+| File | Owner | Purpose |
+|---|---|---|
+| `ARCHITECTURE.md` | P1 (you) | Master architecture, layers, data flow, north star, review checklist |
+| `BACKEND_SPEC.md` | P1 + P5 (you) | FastAPI application layer, domain/orchestration layer, endpoint implementation |
+| `FRONTEND_SPEC.md` | P4 | React dashboard, GIS map UI, components, state |
+| `ML_SPEC.md` | P2 | Feature engineering, model, inference contract, evaluation |
+| `GIS_SPEC.md` | P3 | Spatial analytics, proximity/hotspot logic, GeoJSON generation |
+| `API_SPEC.md` | Shared (P1 owns, all read) | Every REST endpoint, request/response schema |
+| `DATA_SCHEMA.md` | Shared (P1/P5 own, all read) | PostgreSQL schema, entity relationships |
+| `ML_GIS_CONTRACTS.md` | Shared (P2/P3 own, P5 reads) | ML input/output contract, GeoJSON feature contract |
+| `INTEGRATION_SPEC.md` | P1 | Cross-cutting rules: contract-first process, team boundaries, AI-agent guardrails |
+| `ADRS.md` | P1 | Architecture Decision Records for major choices |
+| `SETUP.md` | Shared | Repo layout, local dev setup, environment variables |
 
-```
-Cybercrime complaint + historical patterns + transaction behaviour
-+ ATM/location data + temporal & geospatial context
-        |
-Data processing → Feature engineering → Predictive analytics
-        |
-Ranked, risk-scored, confidence-scored candidate withdrawal locations
-        |
-GIS visualization + explanation + alerts to investigators / banks / LEAs
-```
+## Team → File Map
 
-## System architecture
+- **P1 (You) — Architecture + Integration:** `ARCHITECTURE.md`, `INTEGRATION_SPEC.md`, `ADRS.md`, and co-owns `API_SPEC.md` / `DATA_SCHEMA.md`.
+- **P2 — ML:** `ML_SPEC.md` (+ reads `ML_GIS_CONTRACTS.md`, `API_SPEC.md`).
+- **P3 — GIS:** `GIS_SPEC.md` (+ reads `ML_GIS_CONTRACTS.md`, `API_SPEC.md`).
+- **P4 — Frontend:** `FRONTEND_SPEC.md` (+ reads `API_SPEC.md` only — never touches backend/ML/GIS code).
+- **P5 — Backend Engineering:** `BACKEND_SPEC.md` (+ reads/enforces `API_SPEC.md`, `DATA_SCHEMA.md`, `ML_GIS_CONTRACTS.md`).
+- **P6 — Domain/Product:** reads `ARCHITECTURE.md` §33 (Judge-Defensibility) and §17 (Explainability) — validates real-world plausibility, does not own technical architecture.
 
-```
-React dashboard  (presentation)
-      |
-FastAPI backend  (auth, routing, orchestration)
-      |
-Domain / intelligence layer
-      |-- ML layer            (feature gen, inference, ranking)
-      |-- Geospatial layer    (proximity, hotspots, GeoJSON)
-      |-- Alert layer         (thresholds, notifications)
-      |
-PostgreSQL  (single database)
-```
+## Categories to never blur (used throughout every doc)
+- **IMPLEMENTED** — what the current prototype actually does today.
+- **MVP TARGET** — what we intend to finish for SIH.
+- **FUTURE / NATIONAL SCALE** — what would be needed for production at scale. Never presented as already built.
 
-MVP is a **modular monolith** — one deployable FastAPI app with strict
-internal module boundaries, chosen deliberately over microservices for a
-small team on a hackathon timeline. Full rationale in
-[`ARCHITECTURE.md`](./ARCHITECTURE.md).
+## MVP Tech Stack (fixed — do not add technologies without an ADR)
+- **Frontend:** React, Tailwind CSS, React-Leaflet/Leaflet, Recharts
+- **Backend:** FastAPI, Python
+- **Database:** PostgreSQL (single instance, no microservices, no PostGIS unless an ADR justifies it)
+- **ML:** scikit-learn, Random Forest and/or XGBoost
+- **Geospatial:** GeoJSON, GeoPandas (basic use only)
+- **Integration/Testing:** REST, Postman, pytest, Git/GitHub
 
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React, Tailwind CSS, React-Leaflet, Recharts |
-| Backend | FastAPI (Python) |
-| Database | PostgreSQL |
-| ML | scikit-learn, Random Forest / XGBoost |
-| Geospatial | GeoJSON, GeoPandas |
-| Testing / integration | Postman, pytest, GitHub |
-
-Deliberately **excluded** from the MVP (documented, not forgotten):
-Kubernetes, Kafka, Redis, Elasticsearch, Spark, PostGIS, microservices,
-GraphQL, service meshes, federated learning, full MLOps. See
-`ARCHITECTURE.md` for what moves from "future" to "MVP" and why.
-
-## Repository structure
-
-```
-frontend/         React dashboard
-backend/
-  routes/          FastAPI endpoints
-  models/          SQLAlchemy models
-  schemas/         Pydantic request/response models
-  auth/            JWT auth + RBAC
-  domain/          geospatial + alert + orchestration logic
-  ml/              feature pipeline + model + inference
-  db/              session + Alembic migrations
-  tests/
-docs/              all specs and guides — see below
-```
-
-## Documentation
-
-Every architectural decision, contract, and scope boundary is written
-down — nothing lives only in chat or in someone's head. Read the relevant
-doc **before** writing code in that area.
-
-| Document | What it defines |
-|---|---|
-| `ARCHITECTURE.md` | System overview, ADRs, layer boundaries |
-| `DATA_SCHEMA.md` | PostgreSQL tables and relationships |
-| `API_SPEC.md` | REST endpoint contract (request/response shapes) |
-| `ML_SPEC.md` | ML ↔ backend interface contract |
-| `GIS_SPEC.md` | Geospatial ↔ frontend interface (GeoJSON) |
-| `FRONTEND_SPEC.md` | React app structure, pages, state |
-| `ALERT_SPEC.md` | Alert thresholds, severity, notification rules |
-| `SECURITY_SPEC.md` | Auth, RBAC permission matrix, audit events |
-| `FRONTEND_AGENT.md` | Scope for the frontend AI coding agent |
-| `ML_AGENT.md` | Scope for the ML AI coding agent |
-| `INTEGRATION_AGENT.md` | Scope for the geospatial/alert/orchestration AI agent |
-| `BACKEND_GUIDE.md` | Backend implementation guide |
-
-**Contracts win.** If an implementation conflicts with a spec, the spec
-wins unless the team deliberately changes it via a new ADR in
-`ARCHITECTURE.md` — never a silent edit.
-
-## Key architectural decisions (full detail in `ARCHITECTURE.md`)
-
-- **Prediction horizon: 6 hours** from complaint intake.
-- **Synchronous MVP** — no event streaming; `POST /api/predictions/{crime_id}`
-  runs the full pipeline in one request.
-- **Modular monolith**, not microservices, for MVP.
-- **Single PostgreSQL**, no PostGIS yet — GeoJSON + GeoPandas is enough
-  at MVP scale.
-- **Top-K ranked candidates**, never a single "the" predicted ATM — the
-  system produces risk-ranked intelligence, not a guarantee.
-- **Never fabricate a high-confidence prediction** when evidence is
-  weak — the system returns an explicit "insufficient confidence"
-  response instead.
-
-## What's implemented vs. planned
-
-- **Implemented**: see current repo state / latest demo — kept honest,
-  not aspirational.
-- **MVP target**: everything specified in the docs above.
-- **Future / national scale**: event/stream ingestion, PostGIS, model
-  versioning + drift monitoring, real LEA/bank/I4C integrations,
-  multi-jurisdiction data governance. Explicitly out of scope for this
-  build — never presented as already working.
-
-All data used in this project is **synthetic**. No real personal or
-financial information is used at any stage.
-
-## Team
-
-| Role | Owns |
-|---|---|
-| Architecture & backend | System design, FastAPI, auth/RBAC, DB, deployment |
-| Frontend | React dashboard, GIS map UI |
-| ML | Feature pipeline, model, prediction service |
-| Integration | Geospatial functions, alert engine, orchestration layer |
-| Domain / product | Requirements validation, real-world scenario review |
-
-## Getting started
-
-```bash
-# backend
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-
-# frontend
-cd frontend
-npm install
-npm run dev
-```
-
-(Full environment setup, seed data, and migration steps to be added to
-`SETUP.md` as the implementation lands.)
-
-## License
-
-TBD.
+No Kubernetes, Kafka, Redis, Elasticsearch, Spark, Apache Sedona, PostGIS, microservices, GraphQL, service mesh, federated learning, or advanced MLOps in the MVP unless an ADR in `ADRS.md` explicitly justifies it.
