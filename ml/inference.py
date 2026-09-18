@@ -5,6 +5,7 @@ Step 8B (ranking only): score multiple prepared candidates and return Top-K.
 Step 9A: build_candidate_features() — live 9-feature construction from contract payload.
 Step 9B: ModelInterface.predict() — end-to-end contract-in → ranked-predictions-out.
 Step 10: confidence handling — per-candidate confidence + overall confidence floor.
+Step 12: explanation — feature-based reasons with high/medium/low contribution labels.
 
 Loads the trained RandomForest model bundle from ml/models/latest.pkl
 and returns a risk_score for ONE candidate ATM given its 9 feature values.
@@ -24,12 +25,18 @@ Overall confidence aggregation:
   If overall_confidence < confidence_floor (default 0.35), returns
   status="insufficient_confidence" with predictions=[].
 
+explanation semantics (ML_SPEC.md §Explainability, ML_GIS_CONTRACTS.md §1):
+  Top 3 features ranked by the model's global feature_importances_, descending.
+  For each candidate, attaches actual candidate feature value and contribution:
+    - importance >= 0.18         -> "high"
+    - 0.10 <= importance < 0.18  -> "medium"
+    - importance < 0.10          -> "low"
+
 What is NOT implemented here (deferred to later steps):
   - predicted_window
-  - feature-based explanation / contribution labels
   - backend / FastAPI integration
 
-Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1, docs/ARCHITECTURE.md §4
+Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1, docs/ARCHITECTURE.md §4, §9
 """
 
 import math
@@ -48,8 +55,64 @@ from ml.features import FEATURE_NAMES
 
 DEFAULT_MODEL_PATH: Path = PROJECT_ROOT / "ml" / "models" / "latest.pkl"
 
-# Module-level cache so the model is only loaded once per process
-_model_bundle: Dict = {}
+# Module-level cache for the loaded model bundle so we only read disk once
+_model_bundle: Dict[str, Any] = {}
+
+
+def get_feature_contribution_label(importance: float) -> str:
+    """
+    Map feature importance to contribution label per Step 12 spec:
+      - importance >= 0.18        -> "high"
+      - 0.10 <= importance < 0.18 -> "medium"
+      - importance < 0.10         -> "low"
+    """
+    if importance >= 0.18:
+        return "high"
+    elif importance >= 0.10:
+        return "medium"
+    else:
+        return "low"
+
+
+def build_explanation(
+    feature_values: Dict[str, Any],
+    model: Any,
+    feature_names: List[str],
+    top_n: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    Build Top-N feature-based explanation items for a candidate ATM.
+
+    1. Uses the trained Random Forest model's feature_importances_.
+    2. Ranks the 9 features by global feature importance, descending.
+    3. Selects the Top-N features (default 3).
+    4. For each selected feature, extracts the candidate ATM's actual feature value.
+    5. Assigns contribution label:
+       - importance >= 0.18         -> "high"
+       - 0.10 <= importance < 0.18  -> "medium"
+       - importance < 0.10          -> "low"
+    """
+    importances = getattr(model, "feature_importances_", None)
+    if importances is None:
+        return []
+
+    ranked_features = sorted(
+        zip(feature_names, importances),
+        key=lambda pair: float(pair[1]),
+        reverse=True,
+    )
+
+    explanation = []
+    for feat_name, imp in ranked_features[:top_n]:
+        val = float(feature_values.get(feat_name, 0.0))
+        label = get_feature_contribution_label(float(imp))
+        explanation.append({
+            "feature": feat_name,
+            "value": val,
+            "contribution": label,
+        })
+
+    return explanation
 
 
 def _load_bundle(model_path: Path = DEFAULT_MODEL_PATH) -> Dict:
@@ -155,9 +218,13 @@ def predict_single(
     txn_signal = max(0.0, min(1.0, float(txns_last_6h) / 10.0))
     confidence = float(round(0.5 * hist_signal + 0.5 * txn_signal, 6))
 
+    # Step 12: Feature-based explanation (ML_SPEC.md §Explainability)
+    explanation = build_explanation(raw_values, model, saved_features, top_n=3)
+
     return {
         "risk_score":    risk_score,
         "confidence":    confidence,
+        "explanation":   explanation,
         "model_version": model_version,
     }
 
@@ -174,7 +241,7 @@ def rank_candidates(
     accepted by predict_single(). K is a caller-supplied limit, not a
     project-wide default — the contracts do not define a fixed K.
 
-    Returns a list of {"atm_id", "risk_score", "confidence"} dicts,
+    Returns a list of {"atm_id", "risk_score", "confidence", "explanation"} dicts,
     highest risk first.
     Never invents extra rows if there are fewer than K real candidates.
     An empty input list yields an empty result.
@@ -202,6 +269,7 @@ def rank_candidates(
             "atm_id": candidate["atm_id"],
             "risk_score": result["risk_score"],
             "confidence": result["confidence"],
+            "explanation": result["explanation"],
         })
 
     scored.sort(key=lambda row: row["risk_score"], reverse=True)
@@ -377,7 +445,7 @@ class ModelInterface:
     Returns:
         {
             "model_version": "<version>",
-            "predictions":   [ {"atm_id", "risk_score", "confidence"}, ... ],
+            "predictions":   [ {"atm_id", "risk_score", "confidence", "explanation"}, ... ],
             "status":        "ok" | "insufficient_confidence"
         }
 
@@ -479,3 +547,4 @@ class ModelInterface:
             "predictions": ranked,
             "status": "ok",
         }
+

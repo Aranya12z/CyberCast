@@ -45,6 +45,14 @@ Also tests confidence handling (Step 10):
   4. Low confidence_floor triggers "insufficient_confidence"
   5. Predictions are empty when confidence is insufficient
 
+Also tests explanation generation (Step 12):
+
+  1. Every prediction contains an explanation list of 3 items
+  2. Features are ordered by global feature importance descending
+  3. Candidate-specific feature values are preserved
+  4. Contribution labels follow exact thresholds (high/medium/low)
+  5. ModelInterface and rank_candidates propagate explanations
+
 Usage:
     py ml/test_inference.py
 """
@@ -61,6 +69,8 @@ from ml.inference import (
     DEFAULT_CONFIDENCE_FLOOR,
     ModelInterface,
     build_candidate_features,
+    build_explanation,
+    get_feature_contribution_label,
     predict_single,
     rank_candidates,
 )
@@ -119,7 +129,7 @@ def check(label: str, condition: bool, detail: str = "") -> bool:
 def run_tests() -> int:
     """Returns number of failed checks."""
     print("=" * 62)
-    print("  CYBERCAST ML — INFERENCE VERIFICATION  (8A+8B+9A+9B+10)")
+    print("  CYBERCAST ML — INFERENCE VERIFICATION  (8A+8B+9A+9B+10+12)")
     print("=" * 62)
     failures = 0
 
@@ -164,8 +174,13 @@ def run_tests() -> int:
                                 f"got {conf_high}") else 1
         failures += 0 if check("confidence >= 0.5 (strong signal support)",
                                 conf_high >= 0.5, f"got {conf_high:.6f}") else 1
+        # Step 12: explanation check
+        failures += 0 if check("explanation is returned in predict_single",
+                                "explanation" in result_high
+                                and isinstance(result_high["explanation"], list)) else 1
         print(f"        risk_score    = {rs_high:.6f}")
         print(f"        confidence    = {conf_high:.6f}")
+        print(f"        explanation   = {len(result_high.get('explanation', []))} items")
         print(f"        model_version = {mv}")
     except Exception as exc:
         failures += 1
@@ -269,9 +284,10 @@ def run_tests() -> int:
         min_score = min(scores)
         failures += 0 if check("returned 3 scored candidates", len(ranked) == 3,
                                 f"got {len(ranked)}") else 1
-        failures += 0 if check("each row has atm_id, risk_score, and confidence",
+        failures += 0 if check("each row has atm_id, risk_score, confidence, and explanation",
                                 all("atm_id" in row and "risk_score" in row
-                                    and "confidence" in row for row in ranked)) else 1
+                                    and "confidence" in row and "explanation" in row
+                                    for row in ranked)) else 1
         failures += 0 if check("risk_score is descending (ties allowed)",
                                 descending, f"scores={scores}") else 1
         failures += 0 if check("highest-risk atm_id is first",
@@ -557,9 +573,10 @@ def run_tests() -> int:
                                 isinstance(preds, list)) else 1
         failures += 0 if check("returned 3 predictions (one per ATM)",
                                 len(preds) == 3, f"got {len(preds)}") else 1
-        failures += 0 if check("each prediction has atm_id, risk_score, confidence",
+        failures += 0 if check("each prediction has atm_id, risk_score, confidence, explanation",
                                 all("atm_id" in p and "risk_score" in p
-                                    and "confidence" in p for p in preds)) else 1
+                                    and "confidence" in p and "explanation" in p
+                                    for p in preds)) else 1
         # Verify scores are valid floats in [0, 1]
         all_valid = all(
             isinstance(p["risk_score"], float)
@@ -827,6 +844,157 @@ def run_tests() -> int:
     failures += 0 if check("DEFAULT_CONFIDENCE_FLOOR == 0.35",
                             DEFAULT_CONFIDENCE_FLOOR == 0.35,
                             f"got {DEFAULT_CONFIDENCE_FLOOR}") else 1
+
+    # ==================================================================
+    # Step 12: ML prediction explanations
+    # ==================================================================
+    print("\n[Test 26] predict_single(): explanation structure and schema")
+    try:
+        r = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=0.85, atm_historical_risk=0.78,
+            txns_last_1h=12, txns_last_6h=38,
+            nearby_crime_density=7.2, withdrawal_frequency=54.0,
+        )
+        exp = r.get("explanation")
+        failures += 0 if check("explanation is a list", isinstance(exp, list)) else 1
+        failures += 0 if check("explanation has exactly 3 items", len(exp) == 3,
+                                f"got {len(exp)}") else 1
+        for i, item in enumerate(exp):
+            failures += 0 if check(
+                f"  item {i} has 'feature', 'value', 'contribution'",
+                isinstance(item, dict)
+                and "feature" in item
+                and "value" in item
+                and "contribution" in item
+            ) else 1
+            failures += 0 if check(
+                f"  item {i} value is float",
+                isinstance(item["value"], float)
+            ) else 1
+            failures += 0 if check(
+                f"  item {i} contribution in {'high', 'medium', 'low'}",
+                item["contribution"] in {"high", "medium", "low"},
+                f"got {item['contribution']}"
+            ) else 1
+        print(f"        explanation = {exp}")
+    except Exception as exc:
+        failures += 1
+        check("predict_single() explanation schema test", False, str(exc))
+
+    print("\n[Test 27] build_explanation(): ordered by global feature importance descending")
+    try:
+        import pickle
+        with open(PROJECT_ROOT / "ml" / "models" / "latest.pkl", "rb") as f:
+            bundle = pickle.load(f)
+        model = bundle["model"]
+        feature_names = bundle["feature_names"]
+        importances = dict(zip(feature_names, model.feature_importances_))
+
+        test_vals = {fn: 1.0 for fn in feature_names}
+        exp_items = build_explanation(test_vals, model, feature_names, top_n=3)
+        failures += 0 if check("returns 3 items", len(exp_items) == 3) else 1
+
+        # Verify items are in descending order of model importance
+        item_imps = [importances[it["feature"]] for it in exp_items]
+        is_desc = all(item_imps[i] >= item_imps[i + 1] for i in range(len(item_imps) - 1))
+        failures += 0 if check("features ordered by importance descending", is_desc,
+                                f"got {[it['feature'] for it in exp_items]}") else 1
+        print(f"        top 3 features = {[it['feature'] for it in exp_items]}")
+    except Exception as exc:
+        failures += 1
+        check("build_explanation() ordering test", False, str(exc))
+
+    print("\n[Test 28] get_feature_contribution_label(): threshold mapping")
+    try:
+        failures += 0 if check("importance 0.20 -> 'high'",
+                                get_feature_contribution_label(0.20) == "high") else 1
+        failures += 0 if check("importance 0.18 -> 'high' (boundary)",
+                                get_feature_contribution_label(0.18) == "high") else 1
+        failures += 0 if check("importance 0.15 -> 'medium'",
+                                get_feature_contribution_label(0.15) == "medium") else 1
+        failures += 0 if check("importance 0.10 -> 'medium' (boundary)",
+                                get_feature_contribution_label(0.10) == "medium") else 1
+        failures += 0 if check("importance 0.08 -> 'low'",
+                                get_feature_contribution_label(0.08) == "low") else 1
+        failures += 0 if check("importance 0.00 -> 'low'",
+                                get_feature_contribution_label(0.00) == "low") else 1
+    except Exception as exc:
+        failures += 1
+        check("contribution label thresholds test", False, str(exc))
+
+    print("\n[Test 29] Explanation preserves candidate-specific feature values")
+    try:
+        # Candidate 1: close, high density
+        r1 = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=0.42, atm_historical_risk=0.88,
+            txns_last_1h=10, txns_last_6h=30,
+            nearby_crime_density=9.5, withdrawal_frequency=45.0,
+        )
+        # Candidate 2: far, low density
+        r2 = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=12.5, atm_historical_risk=0.15,
+            txns_last_1h=1, txns_last_6h=2,
+            nearby_crime_density=0.8, withdrawal_frequency=5.0,
+        )
+        exp1_dict = {it["feature"]: it["value"] for it in r1["explanation"]}
+        exp2_dict = {it["feature"]: it["value"] for it in r2["explanation"]}
+
+        if "distance_from_crime" in exp1_dict:
+            failures += 0 if check("candidate 1 distance_from_crime == 0.42",
+                                    exp1_dict["distance_from_crime"] == 0.42,
+                                    f"got {exp1_dict['distance_from_crime']}") else 1
+        if "distance_from_crime" in exp2_dict:
+            failures += 0 if check("candidate 2 distance_from_crime == 12.5",
+                                    exp2_dict["distance_from_crime"] == 12.5,
+                                    f"got {exp2_dict['distance_from_crime']}") else 1
+        if "nearby_crime_density" in exp1_dict:
+            failures += 0 if check("candidate 1 nearby_crime_density == 9.5",
+                                    exp1_dict["nearby_crime_density"] == 9.5) else 1
+        if "nearby_crime_density" in exp2_dict:
+            failures += 0 if check("candidate 2 nearby_crime_density == 0.8",
+                                    exp2_dict["nearby_crime_density"] == 0.8) else 1
+    except Exception as exc:
+        failures += 1
+        check("candidate-specific explanation values test", False, str(exc))
+
+    print("\n[Test 30] ModelInterface.predict(): each prediction contains explanation")
+    try:
+        mi = ModelInterface()
+        result = mi.predict(contract_payload)
+        preds = result["predictions"]
+        failures += 0 if check("predictions are non-empty", len(preds) > 0) else 1
+        for p in preds:
+            failures += 0 if check(
+                f"  {p['atm_id']} has 3-item explanation list",
+                "explanation" in p
+                and isinstance(p["explanation"], list)
+                and len(p["explanation"]) == 3
+            ) else 1
+            for exp_item in p.get("explanation", []):
+                failures += 0 if check(
+                    f"    {p['atm_id']}.{exp_item.get('feature')} has valid structure",
+                    isinstance(exp_item.get("feature"), str)
+                    and isinstance(exp_item.get("value"), float)
+                    and exp_item.get("contribution") in {"high", "medium", "low"}
+                ) else 1
+    except Exception as exc:
+        failures += 1
+        check("ModelInterface prediction explanations test", False, str(exc))
+
+    print("\n[Test 31] rank_candidates(): includes explanation in each row")
+    try:
+        three = [LOW_SIGNAL, HIGH_SIGNAL, MID_SIGNAL]
+        ranked = rank_candidates(three, k=3)
+        failures += 0 if check("all ranked rows contain 3-item explanation",
+                                all("explanation" in row
+                                    and len(row["explanation"]) == 3
+                                    for row in ranked)) else 1
+    except Exception as exc:
+        failures += 1
+        check("rank_candidates explanation propagation test", False, str(exc))
 
     # ------------------------------------------------------------------
     # Summary
