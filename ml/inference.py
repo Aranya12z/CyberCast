@@ -4,18 +4,23 @@ Step 8A: single-candidate ATM risk scoring.
 Step 8B (ranking only): score multiple prepared candidates and return Top-K.
 Step 9A: build_candidate_features() — live 9-feature construction from contract payload.
 Step 9B: ModelInterface.predict() — end-to-end contract-in → ranked-predictions-out.
+Step 10: confidence handling — per-candidate confidence + overall confidence floor.
 
 Loads the trained RandomForest model bundle from ml/models/latest.pkl
 and returns a risk_score for ONE candidate ATM given its 9 feature values.
 rank_candidates() reuses predict_single() and sorts by risk_score.
 build_candidate_features() prepares those 9 values from a contract payload row.
 
+confidence semantics (ML_SPEC.md §risk_score vs confidence):
+  risk_score  = P(positive class) — the ranking key.
+  confidence  = max(P(class_0), P(class_1)) — how certain the model is about
+                its call for this candidate, regardless of direction.
+  These are separate outputs: a high risk_score with low confidence is a valid
+  and distinct case.
+
 What is NOT implemented here (deferred to later steps):
-  - ModelInterface.predict() / full ML_GIS_CONTRACTS.md input payload
-  - confidence threshold / insufficient_confidence check
   - predicted_window
   - feature-based explanation / contribution labels
-  - full ML_GIS_CONTRACTS.md output envelope
   - backend / FastAPI integration
 
 Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1
@@ -88,7 +93,10 @@ def predict_single(
     dict with keys:
         risk_score    (float in [0, 1]) — model's estimated probability
                       that this candidate ATM is the withdrawal location.
-                      This is the ranking key for future Top-K logic.
+                      This is the ranking key for Top-K logic.
+        confidence    (float in [0.5, 1]) — max(P(class_0), P(class_1)).
+                      How certain the model is about its call for this
+                      candidate, independent of direction.
         model_version (str)             — version identifier of the loaded model.
     """
     bundle = _load_bundle(model_path)
@@ -130,12 +138,14 @@ def predict_single(
             f"Expected exactly 9 features; got {len(feature_vector)}."
         )
 
-    # Probability for the positive class (index 1 = withdrawal location)
-    prob = model.predict_proba([feature_vector])[0][1]
-    risk_score = float(prob)
+    # Full probability vector for both classes
+    proba = model.predict_proba([feature_vector])[0]
+    risk_score = float(proba[1])          # P(positive class)
+    confidence = float(max(proba[0], proba[1]))  # certainty of the call
 
     return {
         "risk_score":    risk_score,
+        "confidence":    confidence,
         "model_version": model_version,
     }
 
@@ -152,7 +162,8 @@ def rank_candidates(
     accepted by predict_single(). K is a caller-supplied limit, not a
     project-wide default — the contracts do not define a fixed K.
 
-    Returns a list of {"atm_id", "risk_score"} dicts, highest risk first.
+    Returns a list of {"atm_id", "risk_score", "confidence"} dicts,
+    highest risk first.
     Never invents extra rows if there are fewer than K real candidates.
     An empty input list yields an empty result.
     """
@@ -178,6 +189,7 @@ def rank_candidates(
         scored.append({
             "atm_id": candidate["atm_id"],
             "risk_score": result["risk_score"],
+            "confidence": result["confidence"],
         })
 
     scored.sort(key=lambda row: row["risk_score"], reverse=True)
@@ -335,9 +347,13 @@ def build_candidate_features(
     return features
 
 
+# Default overall confidence floor per ML_SPEC.md §Confidence
+DEFAULT_CONFIDENCE_FLOOR: float = 0.35
+
+
 class ModelInterface:
     """
-    Step 9B — End-to-end prediction interface for the CyberCast contract.
+    Steps 9B + 10 — End-to-end prediction interface for the CyberCast contract.
 
     Accepts the same payload shape produced by the backend:
         {
@@ -349,20 +365,28 @@ class ModelInterface:
     Returns:
         {
             "model_version": "<version>",
-            "predictions":   [ {"atm_id": ..., "risk_score": ...}, ... ],
-            "status":        "ok"
+            "predictions":   [ {"atm_id", "risk_score", "confidence"}, ... ],
+            "status":        "ok" | "insufficient_confidence"
         }
 
-    K (max predictions returned) is set at construction time.
-    If k is None (the default), all candidates are returned.
+    Parameters
+    ----------
+    k : int or None
+        Max predictions returned.  None → return all candidates.
+    confidence_floor : float
+        If the mean per-candidate confidence falls below this value, return
+        status="insufficient_confidence" with an empty predictions list.
+        Default 0.35 per ML_SPEC.md.
     """
 
     def __init__(
         self,
         k: Optional[int] = None,
+        confidence_floor: float = DEFAULT_CONFIDENCE_FLOOR,
         model_path: Path = DEFAULT_MODEL_PATH,
     ) -> None:
         self._k = k
+        self._confidence_floor = confidence_floor
         self._model_path = model_path
 
     def predict(self, payload: dict) -> dict:
@@ -372,7 +396,8 @@ class ModelInterface:
         1. Validate inputs.
         2. Build 9-feature dicts for every candidate ATM.
         3. Score and rank via rank_candidates().
-        4. Return the contract-shaped output envelope.
+        4. Apply overall confidence floor.
+        5. Return the contract-shaped output envelope.
         """
         if not isinstance(payload, dict):
             raise ValueError("payload must be a dict.")
@@ -418,9 +443,25 @@ class ModelInterface:
 
         # Retrieve model_version from the (already-cached) bundle
         bundle = _load_bundle(self._model_path)
+        model_version = bundle["model_version"]
+
+        # ----- Step 10: overall confidence floor -----
+        # Mean confidence across all ranked candidates.
+        # If below the floor, return insufficient_confidence with no predictions.
+        if ranked:
+            mean_confidence = sum(r["confidence"] for r in ranked) / len(ranked)
+        else:
+            mean_confidence = 0.0
+
+        if mean_confidence < self._confidence_floor:
+            return {
+                "model_version": model_version,
+                "predictions": [],
+                "status": "insufficient_confidence",
+            }
 
         return {
-            "model_version": bundle["model_version"],
+            "model_version": model_version,
             "predictions": ranked,
             "status": "ok",
         }

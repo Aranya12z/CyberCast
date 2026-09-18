@@ -1,5 +1,5 @@
 """
-CyberCast ML Layer — Inference Verification Test (Step 8A + 8B + 9A + 9B, P2)
+CyberCast ML Layer — Inference Verification Test (Steps 8A + 8B + 9A + 9B + 10, P2)
 
 Tests predict_single() from ml/inference.py using valid synthetic-style
 feature values. Covers:
@@ -37,6 +37,14 @@ Also tests ModelInterface.predict() (end-to-end contract pipeline):
   5. Empty candidate_atms handled safely
   6. All previous tests continue to pass
 
+Also tests confidence handling (Step 10):
+
+  1. confidence returned and in [0, 1] for predict_single()
+  2. confidence included in rank_candidates() and ModelInterface output
+  3. High-confidence payload returns status "ok"
+  4. Low confidence_floor triggers "insufficient_confidence"
+  5. Predictions are empty when confidence is insufficient
+
 Usage:
     py ml/test_inference.py
 """
@@ -50,6 +58,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from ml.inference import (
+    DEFAULT_CONFIDENCE_FLOOR,
     ModelInterface,
     build_candidate_features,
     predict_single,
@@ -110,7 +119,7 @@ def check(label: str, condition: bool, detail: str = "") -> bool:
 def run_tests() -> int:
     """Returns number of failed checks."""
     print("=" * 62)
-    print("  CYBERCAST ML — INFERENCE VERIFICATION  (8A + 8B + features)")
+    print("  CYBERCAST ML — INFERENCE VERIFICATION  (8A+8B+9A+9B+10)")
     print("=" * 62)
     failures = 0
 
@@ -145,7 +154,18 @@ def run_tests() -> int:
         failures += 0 if check("model_version is a non-empty string",
                                 isinstance(mv, str) and len(mv) > 0,
                                 f"got '{mv}'") else 1
+        # Step 10: confidence checks
+        conf_high = result_high["confidence"]
+        failures += 0 if check("confidence is returned",
+                                "confidence" in result_high) else 1
+        failures += 0 if check("confidence is a float in [0, 1]",
+                                isinstance(conf_high, float)
+                                and 0.0 <= conf_high <= 1.0,
+                                f"got {conf_high}") else 1
+        failures += 0 if check("confidence >= 0.5 (binary max-prob)",
+                                conf_high >= 0.5, f"got {conf_high:.6f}") else 1
         print(f"        risk_score    = {rs_high:.6f}")
+        print(f"        confidence    = {conf_high:.6f}")
         print(f"        model_version = {mv}")
     except Exception as exc:
         failures += 1
@@ -249,8 +269,9 @@ def run_tests() -> int:
         min_score = min(scores)
         failures += 0 if check("returned 3 scored candidates", len(ranked) == 3,
                                 f"got {len(ranked)}") else 1
-        failures += 0 if check("each row has atm_id and risk_score",
-                                all("atm_id" in row and "risk_score" in row for row in ranked)) else 1
+        failures += 0 if check("each row has atm_id, risk_score, and confidence",
+                                all("atm_id" in row and "risk_score" in row
+                                    and "confidence" in row for row in ranked)) else 1
         failures += 0 if check("risk_score is descending (ties allowed)",
                                 descending, f"scores={scores}") else 1
         failures += 0 if check("highest-risk atm_id is first",
@@ -526,8 +547,9 @@ def run_tests() -> int:
                                 isinstance(preds, list)) else 1
         failures += 0 if check("returned 3 predictions (one per ATM)",
                                 len(preds) == 3, f"got {len(preds)}") else 1
-        failures += 0 if check("each prediction has atm_id and risk_score",
-                                all("atm_id" in p and "risk_score" in p for p in preds)) else 1
+        failures += 0 if check("each prediction has atm_id, risk_score, confidence",
+                                all("atm_id" in p and "risk_score" in p
+                                    and "confidence" in p for p in preds)) else 1
         # Verify scores are valid floats in [0, 1]
         all_valid = all(
             isinstance(p["risk_score"], float)
@@ -645,6 +667,98 @@ def run_tests() -> int:
     except Exception as exc:
         failures += 1
         check("ModelInterface.predict() missing key", False, str(exc))
+
+    # ==================================================================
+    # Step 10: Confidence handling
+    # ==================================================================
+    print("\n[Test 19] predict_single(): confidence is separate from risk_score")
+    try:
+        # High-signal: risk_score should be high, confidence should be high
+        r_high = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=0.85, atm_historical_risk=0.78,
+            txns_last_1h=12, txns_last_6h=38,
+            nearby_crime_density=7.2, withdrawal_frequency=54.0,
+        )
+        # Low-signal: risk_score should be low, confidence should be high
+        # (model is confident it is NOT the withdrawal location)
+        r_low = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=11.30, atm_historical_risk=0.15,
+            txns_last_1h=0, txns_last_6h=4,
+            nearby_crime_density=0.8, withdrawal_frequency=8.5,
+        )
+        failures += 0 if check("high-signal risk_score > low-signal risk_score",
+                                r_high["risk_score"] > r_low["risk_score"],
+                                f"{r_high['risk_score']:.4f} vs {r_low['risk_score']:.4f}") else 1
+        failures += 0 if check("confidence and risk_score are different keys",
+                                "confidence" in r_high and "risk_score" in r_high
+                                and r_high["confidence"] != r_high.get("__none__")) else 1
+        failures += 0 if check("high-signal confidence >= 0.5",
+                                r_high["confidence"] >= 0.5) else 1
+        failures += 0 if check("low-signal confidence >= 0.5",
+                                r_low["confidence"] >= 0.5,
+                                f"got {r_low['confidence']:.6f}") else 1
+        print(f"        high: risk={r_high['risk_score']:.4f}, conf={r_high['confidence']:.4f}")
+        print(f"        low:  risk={r_low['risk_score']:.4f}, conf={r_low['confidence']:.4f}")
+    except Exception as exc:
+        failures += 1
+        check("predict_single() confidence test", False, str(exc))
+
+    print("\n[Test 20] ModelInterface: high-confidence payload returns status 'ok'")
+    try:
+        mi = ModelInterface()  # default confidence_floor=0.35
+        result = mi.predict(contract_payload)
+        failures += 0 if check("status is 'ok'", result["status"] == "ok",
+                                f"got {result['status']}") else 1
+        failures += 0 if check("predictions are non-empty",
+                                len(result["predictions"]) > 0) else 1
+        # All predictions should have confidence
+        for p in result["predictions"]:
+            failures += 0 if check(
+                f"  {p['atm_id']}: confidence in [0,1]",
+                isinstance(p["confidence"], float) and 0.0 <= p["confidence"] <= 1.0,
+                f"got {p.get('confidence')}",
+            ) else 1
+    except Exception as exc:
+        failures += 1
+        check("ModelInterface high-confidence test", False, str(exc))
+
+    print("\n[Test 21] ModelInterface: insufficient_confidence via high confidence_floor")
+    try:
+        # Set confidence_floor unrealistically high (1.1) so it always triggers.
+        # This is deterministic and does not depend on model behavior.
+        mi_strict = ModelInterface(confidence_floor=1.1)
+        result_strict = mi_strict.predict(contract_payload)
+        failures += 0 if check("status is 'insufficient_confidence'",
+                                result_strict["status"] == "insufficient_confidence",
+                                f"got {result_strict['status']}") else 1
+        failures += 0 if check("predictions list is empty",
+                                result_strict["predictions"] == [],
+                                f"got {len(result_strict['predictions'])} predictions") else 1
+        failures += 0 if check("model_version still returned",
+                                isinstance(result_strict["model_version"], str)
+                                and len(result_strict["model_version"]) > 0) else 1
+    except Exception as exc:
+        failures += 1
+        check("ModelInterface insufficient_confidence test", False, str(exc))
+
+    print("\n[Test 22] ModelInterface: confidence_floor=0.0 never triggers insufficient")
+    try:
+        mi_zero = ModelInterface(confidence_floor=0.0)
+        result_zero = mi_zero.predict(contract_payload)
+        failures += 0 if check("status is 'ok' with floor=0.0",
+                                result_zero["status"] == "ok") else 1
+        failures += 0 if check("predictions returned with floor=0.0",
+                                len(result_zero["predictions"]) > 0) else 1
+    except Exception as exc:
+        failures += 1
+        check("ModelInterface confidence_floor=0 test", False, str(exc))
+
+    print("\n[Test 23] DEFAULT_CONFIDENCE_FLOOR is 0.35")
+    failures += 0 if check("DEFAULT_CONFIDENCE_FLOOR == 0.35",
+                            DEFAULT_CONFIDENCE_FLOOR == 0.35,
+                            f"got {DEFAULT_CONFIDENCE_FLOOR}") else 1
 
     # ------------------------------------------------------------------
     # Summary
