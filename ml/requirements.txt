@@ -1,0 +1,14 @@
+# CyberCast ML Layer — Python dependency pinning (P2)
+#
+# IMPORTANT: scikit-learn version is pinned to the EXACT version used to train
+# the committed model artifacts:
+#   ml/models/latest.pkl
+#   ml/models/rf_v1_20260917.pkl
+#
+# The models were trained on 2026-09-18 using scikit-learn 1.9.1 in this
+# environment. Loading a pickle trained with a different scikit-learn version
+# may produce UserWarnings or raise errors due to estimator API changes.
+# Do NOT upgrade this pin without retraining and re-committing the model files.
+#
+# Reference: docs/ML_SPEC.md (Model lifecycle), docs/INTEGRATION_SPEC.md §6
+scikit-learn==1.9.1

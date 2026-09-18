@@ -676,8 +676,9 @@ def run_tests() -> int:
             "recent_transactions": [],
         }
         result_empty = mi.predict(empty_payload)
-        failures += 0 if check("status is 'ok'",
-                                result_empty["status"] == "ok") else 1
+        failures += 0 if check("status is 'insufficient_evidence'",
+                                result_empty["status"] == "insufficient_evidence",
+                                f"got {result_empty['status']}") else 1
         failures += 0 if check("predictions is an empty list",
                                 result_empty["predictions"] == [],
                                 f"got {result_empty['predictions']}") else 1
@@ -689,15 +690,16 @@ def run_tests() -> int:
         check("ModelInterface.predict() empty candidates", False, str(exc))
 
     # ------------------------------------------------------------------
-    # Test 18: missing candidate_atms key defaults to empty
+    # Test 18: missing candidate_atms key → insufficient_evidence
     # ------------------------------------------------------------------
     print("\n[Test 18] ModelInterface.predict(): missing candidate_atms key")
     try:
         mi = ModelInterface()
         minimal_payload = {"crime": contract_payload["crime"]}
         result_min = mi.predict(minimal_payload)
-        failures += 0 if check("status is 'ok'",
-                                result_min["status"] == "ok") else 1
+        failures += 0 if check("status is 'insufficient_evidence'",
+                                result_min["status"] == "insufficient_evidence",
+                                f"got {result_min['status']}") else 1
         failures += 0 if check("predictions is an empty list",
                                 result_min["predictions"] == []) else 1
     except Exception as exc:
@@ -1090,6 +1092,193 @@ def run_tests() -> int:
     except Exception as exc:
         failures += 1
         check("build_predicted_window() invalid input raises ValueError", False, str(exc))
+
+    # ==================================================================
+    # Regression tests for Issues 1, 2, 3
+    # ==================================================================
+
+    # ------------------------------------------------------------------
+    # Test 36 (Issue 1): max-confidence floor — one high-confidence candidate
+    # in a mixed set keeps the run valid.
+    # Construct a payload with one strong ATM and two thin-data ATMs.
+    # Under the old mean-floor this would have been rejected; under max it passes.
+    # ------------------------------------------------------------------
+    print("\n[Test 36] Issue 1: max-confidence floor — high-conf candidate accepted alongside low-conf ones")
+    try:
+        mixed_payload = {
+            "crime": {
+                "crime_id": "c_mixed",
+                "crime_type": "upi_fraud",
+                "timestamp": "2026-09-16T14:30:00Z",
+                "location": {"lat": 12.97, "lng": 77.59},
+                "amount": 45000.0,
+            },
+            "candidate_atms": [
+                {
+                    "atm_id": "atm-strong",
+                    "location": {"lat": 12.98, "lng": 77.60},
+                    "atm_historical_risk": 0.80,
+                    "spatial_features": {"distance_from_crime": 0.9, "nearby_crime_density": 7.0},
+                },
+                {
+                    "atm_id": "atm-thin-A",
+                    "location": {"lat": 13.00, "lng": 77.62},
+                    "atm_historical_risk": 0.05,
+                    "spatial_features": {"distance_from_crime": 3.5, "nearby_crime_density": 1.0},
+                },
+                {
+                    "atm_id": "atm-thin-B",
+                    "location": {"lat": 13.10, "lng": 77.70},
+                    "atm_historical_risk": 0.08,
+                    "spatial_features": {"distance_from_crime": 12.0, "nearby_crime_density": 0.5},
+                },
+            ],
+            # Only atm-strong has transactions; the two thin ATMs have none
+            "recent_transactions": [
+                {"atm_id": "atm-strong", "timestamp": "2026-09-16T14:20:00Z", "amount": 1000},
+                {"atm_id": "atm-strong", "timestamp": "2026-09-16T13:30:00Z", "amount": 1500},
+                {"atm_id": "atm-strong", "timestamp": "2026-09-16T12:00:00Z", "amount": 2000},
+                {"atm_id": "atm-strong", "timestamp": "2026-09-16T11:00:00Z", "amount": 1000},
+            ],
+        }
+        mi_default = ModelInterface()
+        result_mixed = mi_default.predict(mixed_payload)
+        # atm-strong: confidence = 0.5*0.80 + 0.5*min(1.0, 4/10) = 0.4 + 0.2 = 0.60 → >= 0.35
+        # atm-thin-A: confidence = 0.5*0.05 + 0.5*0.0 = 0.025  (no transactions)
+        # atm-thin-B: confidence = 0.5*0.08 + 0.5*0.0 = 0.04   (no transactions)
+        # max(confidence) = 0.60 → run should be accepted (status=ok)
+        failures += 0 if check(
+            "mixed set: status is 'ok' because max_confidence >= floor",
+            result_mixed["status"] == "ok",
+            f"got {result_mixed['status']}",
+        ) else 1
+        failures += 0 if check(
+            "mixed set: predictions non-empty",
+            len(result_mixed["predictions"]) > 0,
+        ) else 1
+        # Verify the strong ATM has confidence >= 0.35
+        strong_pred = next(
+            (p for p in result_mixed["predictions"] if p["atm_id"] == "atm-strong"), None
+        )
+        failures += 0 if check(
+            "mixed set: atm-strong present in predictions",
+            strong_pred is not None,
+        ) else 1
+        if strong_pred is not None:
+            failures += 0 if check(
+                "mixed set: atm-strong confidence >= 0.35",
+                strong_pred["confidence"] >= 0.35,
+                f"got {strong_pred['confidence']}",
+            ) else 1
+        # Verify thin ATMs are still returned (they are not suppressed individually)
+        thin_a_pred = next(
+            (p for p in result_mixed["predictions"] if p["atm_id"] == "atm-thin-A"), None
+        )
+        failures += 0 if check(
+            "mixed set: atm-thin-A present in predictions",
+            thin_a_pred is not None,
+        ) else 1
+        if thin_a_pred is not None:
+            failures += 0 if check(
+                "mixed set: atm-thin-A confidence < 0.35 (independent of floor decision)",
+                thin_a_pred["confidence"] < 0.35,
+                f"got {thin_a_pred['confidence']}",
+            ) else 1
+    except Exception as exc:
+        failures += 1
+        check("Issue 1 max-confidence floor regression", False, str(exc))
+
+    # ------------------------------------------------------------------
+    # Test 37 (Issue 1 + 2): all thin-data candidates → still insufficient_confidence.
+    # Confirms the all-thin case still correctly returns insufficient_confidence.
+    # ------------------------------------------------------------------
+    print("\n[Test 37] Issue 1: all-thin candidates → status 'insufficient_confidence'")
+    try:
+        all_thin_payload = {
+            "crime": {
+                "crime_id": "c_allthin",
+                "crime_type": "upi_fraud",
+                "timestamp": "2026-09-16T14:30:00Z",
+                "location": {"lat": 12.97, "lng": 77.59},
+                "amount": 25000.0,
+            },
+            "candidate_atms": [
+                {
+                    "atm_id": "atm-thin-x",
+                    "location": {"lat": 12.98, "lng": 77.60},
+                    "atm_historical_risk": 0.05,
+                    "spatial_features": {"distance_from_crime": 1.0, "nearby_crime_density": 2.0},
+                },
+                {
+                    "atm_id": "atm-thin-y",
+                    "location": {"lat": 13.00, "lng": 77.62},
+                    "atm_historical_risk": 0.10,
+                    "spatial_features": {"distance_from_crime": 2.5, "nearby_crime_density": 1.0},
+                },
+            ],
+            "recent_transactions": [],
+        }
+        # max_confidence = max(0.025, 0.05) = 0.05 < 0.35 → insufficient_confidence
+        mi_default = ModelInterface()
+        result_thin = mi_default.predict(all_thin_payload)
+        failures += 0 if check(
+            "all-thin: status is 'insufficient_confidence'",
+            result_thin["status"] == "insufficient_confidence",
+            f"got {result_thin['status']}",
+        ) else 1
+        failures += 0 if check(
+            "all-thin: predictions is empty",
+            result_thin["predictions"] == [],
+        ) else 1
+    except Exception as exc:
+        failures += 1
+        check("Issue 1 all-thin regression", False, str(exc))
+
+    # ------------------------------------------------------------------
+    # Test 38 (Issue 2): empty candidate_atms → insufficient_evidence
+    # ------------------------------------------------------------------
+    print("\n[Test 38] Issue 2: empty candidate_atms → 'insufficient_evidence'")
+    try:
+        mi = ModelInterface()
+        result38 = mi.predict({
+            "crime": contract_payload["crime"],
+            "candidate_atms": [],
+            "recent_transactions": [],
+        })
+        failures += 0 if check(
+            "empty candidates: status is 'insufficient_evidence'",
+            result38["status"] == "insufficient_evidence",
+            f"got {result38['status']}",
+        ) else 1
+        failures += 0 if check("empty candidates: predictions is []", result38["predictions"] == []) else 1
+        failures += 0 if check(
+            "empty candidates: model_version present",
+            isinstance(result38.get("model_version"), str) and len(result38["model_version"]) > 0,
+        ) else 1
+    except Exception as exc:
+        failures += 1
+        check("Issue 2 empty candidates regression", False, str(exc))
+
+    # ------------------------------------------------------------------
+    # Test 39 (Issue 2): missing candidate_atms key → insufficient_evidence
+    # ------------------------------------------------------------------
+    print("\n[Test 39] Issue 2: missing candidate_atms key → 'insufficient_evidence'")
+    try:
+        mi = ModelInterface()
+        result39 = mi.predict({"crime": contract_payload["crime"]})
+        failures += 0 if check(
+            "missing candidates: status is 'insufficient_evidence'",
+            result39["status"] == "insufficient_evidence",
+            f"got {result39['status']}",
+        ) else 1
+        failures += 0 if check("missing candidates: predictions is []", result39["predictions"] == []) else 1
+        failures += 0 if check(
+            "missing candidates: model_version present",
+            isinstance(result39.get("model_version"), str) and len(result39["model_version"]) > 0,
+        ) else 1
+    except Exception as exc:
+        failures += 1
+        check("Issue 2 missing candidates regression", False, str(exc))
 
     # ------------------------------------------------------------------
     # Summary
