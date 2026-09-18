@@ -2,6 +2,7 @@ import React from 'react';
 import { AppProvider, useApp } from './state/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
+import { Footer } from './components/layout/Footer';
 import { Overview } from './pages/Overview';
 import { GISMap } from './pages/GISMap';
 import { Predictions } from './pages/Predictions';
@@ -34,30 +35,8 @@ const MainLayout = () => {
             {activeTab === 'terms' && <TermsAndConditions />}
           </div>
 
-          {/* Bottom Footer with Compliance and Disclaimers */}
-          <footer className="mt-12 pt-4 border-t border-slate-800/80 text-xs text-slate-400 max-w-7xl w-full mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-              <span>CyberCast Research Prototype</span>
-              <span>•</span>
-              <span>Smart India Hackathon (SIH 2026)</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs font-mono">
-              <button
-                onClick={() => setActiveTab('privacy')}
-                className="hover:text-slate-300 transition"
-              >
-                Privacy Policy
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => setActiveTab('terms')}
-                className="hover:text-slate-300 transition"
-              >
-                Terms and Conditions
-              </button>
-            </div>
-          </footer>
+          {/* Global Footer */}
+          <Footer />
         </main>
       </div>
     </div>
