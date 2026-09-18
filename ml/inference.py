@@ -32,11 +32,16 @@ explanation semantics (ML_SPEC.md §Explainability, ML_GIS_CONTRACTS.md §1):
     - 0.10 <= importance < 0.18  -> "medium"
     - importance < 0.10          -> "low"
 
+predicted_window semantics (ADRS.md ADR-005, ML_GIS_CONTRACTS.md §1):
+  Fixed 6-hour prediction window from the crime timestamp:
+    start: crime timestamp (ISO8601)
+    end:   crime timestamp + 6 hours (ISO8601)
+  Preserves timezone offset if timezone-aware.
+
 What is NOT implemented here (deferred to later steps):
-  - predicted_window
   - backend / FastAPI integration
 
-Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1, docs/ARCHITECTURE.md §4, §9
+Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1, docs/ARCHITECTURE.md §4, §9, docs/ADRS.md ADR-005
 """
 
 import math
@@ -295,6 +300,41 @@ def _parse_iso8601(value: Any, field_name: str) -> datetime:
     return parsed
 
 
+def build_predicted_window(crime_timestamp: Any, window_hours: int = 6) -> Dict[str, str]:
+    """
+    Construct the predicted_window dict per ML_GIS_CONTRACTS.md §1 & ADR-005.
+
+    Parameters
+    ----------
+    crime_timestamp : str
+        ISO8601 timestamp string from the crime payload.
+    window_hours : int
+        Duration of the prediction horizon (fixed at 6 hours for MVP per ADR-005).
+
+    Returns
+    -------
+    dict with keys:
+        start : ISO8601 string matching the crime timestamp.
+        end   : ISO8601 string for crime timestamp + window_hours,
+                preserving timezone offset when timezone-aware.
+    """
+    start_dt = _parse_iso8601(crime_timestamp, "crime.timestamp")
+    end_dt = start_dt + timedelta(hours=window_hours)
+
+    ts_str = str(crime_timestamp).strip() if crime_timestamp is not None else ""
+    if ts_str.endswith("Z") or ts_str.endswith("z"):
+        start_out = ts_str
+        end_out = end_dt.isoformat().replace("+00:00", "Z")
+    else:
+        start_out = ts_str if ts_str else start_dt.isoformat()
+        end_out = end_dt.isoformat()
+
+    return {
+        "start": start_out,
+        "end": end_out,
+    }
+
+
 def _as_utc(value: datetime) -> datetime:
     """Compare instants in UTC. Naive timestamps are treated as UTC."""
     if value.tzinfo is None:
@@ -445,7 +485,7 @@ class ModelInterface:
     Returns:
         {
             "model_version": "<version>",
-            "predictions":   [ {"atm_id", "risk_score", "confidence", "explanation"}, ... ],
+            "predictions":   [ {"atm_id", "risk_score", "confidence", "predicted_window", "explanation"}, ... ],
             "status":        "ok" | "insufficient_confidence"
         }
 
@@ -542,9 +582,22 @@ class ModelInterface:
                 "status": "insufficient_confidence",
             }
 
+        # Build 6-hour predicted window from crime timestamp (ADR-005)
+        predicted_window = build_predicted_window(crime.get("timestamp"), window_hours=6)
+
+        predictions: List[Dict[str, Any]] = []
+        for r in ranked:
+            predictions.append({
+                "atm_id": r["atm_id"],
+                "risk_score": r["risk_score"],
+                "confidence": r["confidence"],
+                "predicted_window": predicted_window,
+                "explanation": r["explanation"],
+            })
+
         return {
             "model_version": model_version,
-            "predictions": ranked,
+            "predictions": predictions,
             "status": "ok",
         }
 

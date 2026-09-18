@@ -53,6 +53,13 @@ Also tests explanation generation (Step 12):
   4. Contribution labels follow exact thresholds (high/medium/low)
   5. ModelInterface and rank_candidates propagate explanations
 
+Also tests predicted_window generation (ADR-005):
+
+  1. predicted_window exists in every prediction
+  2. start matches crime timestamp
+  3. end is exactly 6 hours after start
+  4. Timezone offset is preserved when timezone-aware
+
 Usage:
     py ml/test_inference.py
 """
@@ -70,6 +77,7 @@ from ml.inference import (
     ModelInterface,
     build_candidate_features,
     build_explanation,
+    build_predicted_window,
     get_feature_contribution_label,
     predict_single,
     rank_candidates,
@@ -129,7 +137,7 @@ def check(label: str, condition: bool, detail: str = "") -> bool:
 def run_tests() -> int:
     """Returns number of failed checks."""
     print("=" * 62)
-    print("  CYBERCAST ML — INFERENCE VERIFICATION  (8A+8B+9A+9B+10+12)")
+    print("  CYBERCAST ML — INFERENCE VERIFICATION  (ALL STEPS)")
     print("=" * 62)
     failures = 0
 
@@ -573,9 +581,10 @@ def run_tests() -> int:
                                 isinstance(preds, list)) else 1
         failures += 0 if check("returned 3 predictions (one per ATM)",
                                 len(preds) == 3, f"got {len(preds)}") else 1
-        failures += 0 if check("each prediction has atm_id, risk_score, confidence, explanation",
+        failures += 0 if check("each prediction has atm_id, risk_score, confidence, predicted_window, explanation",
                                 all("atm_id" in p and "risk_score" in p
-                                    and "confidence" in p and "explanation" in p
+                                    and "confidence" in p and "predicted_window" in p
+                                    and "explanation" in p
                                     for p in preds)) else 1
         # Verify scores are valid floats in [0, 1]
         all_valid = all(
@@ -995,6 +1004,92 @@ def run_tests() -> int:
     except Exception as exc:
         failures += 1
         check("rank_candidates explanation propagation test", False, str(exc))
+
+    # ==================================================================
+    # Step: predicted_window (ADR-005, ML_GIS_CONTRACTS.md §1)
+    # ==================================================================
+    print("\n[Test 32] build_predicted_window(): exactly 6 hours, UTC ('Z') format")
+    try:
+        ts_utc = "2026-09-16T14:30:00Z"
+        win = build_predicted_window(ts_utc, window_hours=6)
+        failures += 0 if check("returns a dict with 'start' and 'end'",
+                                isinstance(win, dict) and "start" in win and "end" in win) else 1
+        failures += 0 if check("start matches crime timestamp exactly",
+                                win["start"] == ts_utc,
+                                f"got {win['start']}") else 1
+        failures += 0 if check("end is 6 hours later in Z format",
+                                win["end"] == "2026-09-16T20:30:00Z",
+                                f"got {win['end']}") else 1
+        from datetime import datetime as dt_cls
+        s_dt = dt_cls.fromisoformat(win["start"].replace("Z", "+00:00"))
+        e_dt = dt_cls.fromisoformat(win["end"].replace("Z", "+00:00"))
+        diff_hours = (e_dt - s_dt).total_seconds() / 3600.0
+        failures += 0 if check("window duration is exactly 6.0 hours",
+                                diff_hours == 6.0,
+                                f"got {diff_hours}") else 1
+        print(f"        window: {win['start']} -> {win['end']} (duration: {diff_hours}h)")
+    except Exception as exc:
+        failures += 1
+        check("build_predicted_window() UTC test", False, str(exc))
+
+    print("\n[Test 33] build_predicted_window(): timezone offset preservation (+05:30)")
+    try:
+        ts_ist = "2026-09-16T14:30:00+05:30"
+        win_ist = build_predicted_window(ts_ist, window_hours=6)
+        failures += 0 if check("start preserves +05:30 offset",
+                                win_ist["start"] == ts_ist,
+                                f"got {win_ist['start']}") else 1
+        failures += 0 if check("end preserves +05:30 offset",
+                                win_ist["end"] == "2026-09-16T20:30:00+05:30",
+                                f"got {win_ist['end']}") else 1
+        s_ist = dt_cls.fromisoformat(win_ist["start"])
+        e_ist = dt_cls.fromisoformat(win_ist["end"])
+        diff_ist = (e_ist - s_ist).total_seconds() / 3600.0
+        failures += 0 if check("IST window duration is exactly 6.0 hours",
+                                diff_ist == 6.0,
+                                f"got {diff_ist}") else 1
+        print(f"        window IST: {win_ist['start']} -> {win_ist['end']}")
+    except Exception as exc:
+        failures += 1
+        check("build_predicted_window() IST test", False, str(exc))
+
+    print("\n[Test 34] ModelInterface.predict(): every prediction contains predicted_window")
+    try:
+        mi = ModelInterface()
+        result = mi.predict(contract_payload)
+        preds = result["predictions"]
+        expected_crime_ts = contract_payload["crime"]["timestamp"]
+        failures += 0 if check("predictions are non-empty", len(preds) > 0) else 1
+        for p in preds:
+            failures += 0 if check(
+                f"  {p['atm_id']} has 'predicted_window'",
+                "predicted_window" in p and isinstance(p["predicted_window"], dict)
+            ) else 1
+            pw = p.get("predicted_window", {})
+            failures += 0 if check(
+                f"  {p['atm_id']} window.start matches crime.timestamp",
+                pw.get("start") == expected_crime_ts,
+                f"got {pw.get('start')}"
+            ) else 1
+            failures += 0 if check(
+                f"  {p['atm_id']} window.end is 6 hours later",
+                pw.get("end") == "2026-09-16T20:30:00Z",
+                f"got {pw.get('end')}"
+            ) else 1
+    except Exception as exc:
+        failures += 1
+        check("ModelInterface predicted_window test", False, str(exc))
+
+    print("\n[Test 35] build_predicted_window(): invalid timestamp raises ValueError")
+    try:
+        build_predicted_window("invalid-timestamp-string")
+        failures += 1
+        check("build_predicted_window() invalid input raises ValueError", False, "no exception")
+    except ValueError:
+        failures += 0 if check("build_predicted_window() invalid input raises ValueError", True) else 1
+    except Exception as exc:
+        failures += 1
+        check("build_predicted_window() invalid input raises ValueError", False, str(exc))
 
     # ------------------------------------------------------------------
     # Summary
