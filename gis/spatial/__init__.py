@@ -11,7 +11,8 @@ from gis.spatial.candidate_selection import (
 )
 from gis.spatial.density import compute_spatial_features, compute_nearby_crime_density
 from gis.spatial.hotspots import detect_spatial_hotspots
-from gis.spatial.geojson_builder import build_predictions_geojson, categorize_risk
+from gis.spatial.geojson_builder import build_predictions_geojson, categorize_risk, format_explanation
+from gis.spatial.geojson_validator import validate_predictions_geojson, GeoJSONValidationResult
 from gis.spatial.data_loader import (
     SpatialPoint,
     load_crimes,
@@ -45,6 +46,9 @@ __all__ = [
     "detect_spatial_hotspots",
     "build_predictions_geojson",
     "categorize_risk",
+    "format_explanation",
+    "validate_predictions_geojson",
+    "GeoJSONValidationResult",
     "SpatialPoint",
     "load_crimes",
     "load_atms",

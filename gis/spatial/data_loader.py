@@ -132,6 +132,28 @@ def prepare_spatial_record(
     else:
         location_source = record
 
+    # Pre-cast coordinate fields to float at the record boundary.
+    # CSV rows arrive as strings; extract_coordinates now rejects str/bool to prevent
+    # silent misinterpretation. Cast here so the spatial layer stays strictly typed.
+    _castable_location: Dict[str, Any] = dict(location_source) if isinstance(location_source, dict) else location_source
+    for _coord_key in ("lat", "lng", "latitude", "longitude"):
+        if isinstance(_castable_location, dict) and _coord_key in _castable_location:
+            _raw_val = _castable_location[_coord_key]
+            if isinstance(_raw_val, bool):
+                # bool cannot represent a geographic coordinate
+                if strict:
+                    raise ValueError(f"Coordinate field '{_coord_key}' must not be bool. Got {_raw_val!r}.")
+                logger.warning("Skipping record: coordinate field '%s' is bool: %r", _coord_key, _raw_val)
+                return None
+            if isinstance(_raw_val, str):
+                try:
+                    _castable_location[_coord_key] = float(_raw_val)
+                except (ValueError, TypeError):
+                    # Non-parseable string (e.g. "invalid") — let extract_coordinates raise
+                    pass
+    location_source = _castable_location
+
+
     try:
         lat, lng = extract_coordinates(location_source)
         point = SpatialPoint(x=lng, y=lat, crs=validated_crs)
