@@ -69,6 +69,9 @@ Response:
   "predictions": [
     {
       "atm_id": "string",
+      "bank": "string",
+      "area": "string",
+      "location": { "lat": 0.0, "lng": 0.0 },
       "risk_score": 0.0,
       "confidence": 0.0,
       "predicted_window": { "start": "ISO8601", "end": "ISO8601" },
