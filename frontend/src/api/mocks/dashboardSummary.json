@@ -1,0 +1,41 @@
+{
+  "active_alerts": 3,
+  "high_risk_predictions": 4,
+  "prediction_stats": {
+    "total_predictions_run": 28,
+    "avg_confidence": 0.76,
+    "insufficient_evidence_rate": 0.07
+  },
+  "recent_activity": [
+    {
+      "type": "alert_created",
+      "timestamp": "2026-09-17T11:45:00Z",
+      "crime_id": "crm-890214",
+      "summary": "High risk alert generated for ATM HDFC-KORAMANGALA-04"
+    },
+    {
+      "type": "prediction_generated",
+      "timestamp": "2026-09-17T11:42:15Z",
+      "crime_id": "crm-890214",
+      "summary": "Prediction run completed. 5 candidate ATMs ranked."
+    },
+    {
+      "type": "alert_acknowledged",
+      "timestamp": "2026-09-17T11:15:20Z",
+      "crime_id": "crm-778210",
+      "summary": "Alert alt-4910 acknowledged by Investigator Sharma"
+    },
+    {
+      "type": "prediction_generated",
+      "timestamp": "2026-09-17T10:30:00Z",
+      "crime_id": "crm-778210",
+      "summary": "Prediction run completed. 4 candidate ATMs ranked."
+    },
+    {
+      "type": "alert_created",
+      "timestamp": "2026-09-17T09:12:00Z",
+      "crime_id": "crm-551092",
+      "summary": "Medium risk alert generated for ATM SBI-INDIRANAGAR-02"
+    }
+  ]
+}

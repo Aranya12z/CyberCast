@@ -1,0 +1,30 @@
+[
+  {
+    "crime_id": "crm-890214",
+    "crime_type": "UPI Fraud / Social Engineering",
+    "timestamp": "2026-09-17T11:20:00Z",
+    "location": { "lat": 12.9352, "lng": 77.6245 },
+    "amount": 125000.00
+  },
+  {
+    "crime_id": "crm-778210",
+    "crime_type": "ATM Card Skimming / Clone",
+    "timestamp": "2026-09-17T10:15:00Z",
+    "location": { "lat": 12.9784, "lng": 77.6408 },
+    "amount": 68000.00
+  },
+  {
+    "crime_id": "crm-551092",
+    "crime_type": "Part-time Job Investment Scam",
+    "timestamp": "2026-09-17T08:45:00Z",
+    "location": { "lat": 12.9716, "lng": 77.5946 },
+    "amount": 340000.00
+  },
+  {
+    "crime_id": "crm-104921",
+    "crime_type": "Lottery SMS Phishing (Sparse Signals)",
+    "timestamp": "2026-09-17T07:30:00Z",
+    "location": { "lat": 12.9698, "lng": 77.7499 },
+    "amount": 15000.00
+  }
+]

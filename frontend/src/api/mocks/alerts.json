@@ -1,0 +1,46 @@
+[
+  {
+    "alert_id": "alt-9041",
+    "crime_id": "crm-890214",
+    "atm_id": "atm-hdfc-8821",
+    "bank": "HDFC Bank",
+    "area": "Koramangala 4th Block",
+    "severity": "high",
+    "created_at": "2026-09-17T11:45:00Z",
+    "status": "new",
+    "channel": "dashboard"
+  },
+  {
+    "alert_id": "alt-9042",
+    "crime_id": "crm-890214",
+    "atm_id": "atm-sbi-4102",
+    "bank": "State Bank of India",
+    "area": "Koramangala Sony World Signal",
+    "severity": "high",
+    "created_at": "2026-09-17T11:45:10Z",
+    "status": "new",
+    "channel": "mock_sms"
+  },
+  {
+    "alert_id": "alt-8812",
+    "crime_id": "crm-778210",
+    "atm_id": "atm-sbi-ind-02",
+    "bank": "State Bank of India",
+    "area": "Indiranagar 100ft Road",
+    "severity": "high",
+    "created_at": "2026-09-17T10:32:00Z",
+    "status": "acknowledged",
+    "channel": "dashboard"
+  },
+  {
+    "alert_id": "alt-5531",
+    "crime_id": "crm-551092",
+    "atm_id": "atm-pnb-mg-01",
+    "bank": "Punjab National Bank",
+    "area": "MG Road Metro Station",
+    "severity": "medium",
+    "created_at": "2026-09-17T09:15:00Z",
+    "status": "new",
+    "channel": "dashboard"
+  }
+]

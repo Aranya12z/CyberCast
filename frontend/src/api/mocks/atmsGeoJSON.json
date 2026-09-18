@@ -1,0 +1,145 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6258, 12.9341]
+      },
+      "properties": {
+        "atm_id": "atm-hdfc-8821",
+        "bank": "HDFC Bank",
+        "area": "Koramangala 4th Block",
+        "risk_score": 0.88,
+        "confidence": 0.82,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "risk_category": "high",
+        "explanation": [
+          "Close proximity (0.35 km) to crime epicenter",
+          "High nearby crime density (8.5/sq km)",
+          "Elevated historical ATM risk score (0.79)"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6289, 12.9372]
+      },
+      "properties": {
+        "atm_id": "atm-sbi-4102",
+        "bank": "State Bank of India",
+        "area": "Koramangala Sony World Signal",
+        "risk_score": 0.74,
+        "confidence": 0.78,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "risk_category": "high",
+        "explanation": [
+          "High historical ATM risk score (0.72)",
+          "Proximity (0.82 km) to incident location",
+          "Elevated 6-hour transaction velocity (42 txns)"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6321, 12.9298]
+      },
+      "properties": {
+        "atm_id": "atm-icici-1904",
+        "bank": "ICICI Bank",
+        "area": "Koramangala 1st Block",
+        "risk_score": 0.58,
+        "confidence": 0.65,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "risk_category": "medium",
+        "explanation": [
+          "Moderate distance from crime (1.45 km)",
+          "Elevated withdrawal frequency pattern"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6184, 12.9245]
+      },
+      "properties": {
+        "atm_id": "atm-axis-3312",
+        "bank": "Axis Bank",
+        "area": "Tavarekere Main Rd",
+        "risk_score": 0.42,
+        "confidence": 0.55,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "risk_category": "medium",
+        "explanation": [
+          "Perimeter location (1.95 km from crime)",
+          "Moderate historical withdrawal density"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6120, 12.9189]
+      },
+      "properties": {
+        "atm_id": "atm-canara-5011",
+        "bank": "Canara Bank",
+        "area": "BTM 1st Stage",
+        "risk_score": 0.28,
+        "confidence": 0.48,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "risk_category": "low",
+        "explanation": [
+          "Low historical risk baseline",
+          "Distant from crime location (2.85 km)"
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.6415, 12.9772]
+      },
+      "properties": {
+        "atm_id": "atm-sbi-ind-02",
+        "bank": "State Bank of India",
+        "area": "Indiranagar 100ft Road",
+        "risk_score": 0.81,
+        "confidence": 0.84,
+        "predicted_window": {
+          "start": "2026-09-17T10:30:00Z",
+          "end": "2026-09-17T16:30:00Z"
+        },
+        "risk_category": "high",
+        "explanation": [
+          "Immediate proximity (0.18 km) to skimming complaint",
+          "Repeated historical skimming cashout cluster"
+        ]
+      }
+    }
+  ]
+}
