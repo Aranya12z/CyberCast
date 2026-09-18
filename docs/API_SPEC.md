@@ -69,6 +69,8 @@ Response:
   "predictions": [
     {
       "atm_id": "string",
+      "bank": "string (optional) — institution name, sourced from atms.bank",
+      "area": "string (optional) — human-readable locality, sourced from atms.area",
       "risk_score": 0.0,
       "confidence": 0.0,
       "predicted_window": { "start": "ISO8601", "end": "ISO8601" },
@@ -96,6 +98,8 @@ Alert object:
   "alert_id": "string",
   "crime_id": "string",
   "atm_id": "string",
+  "bank": "string (optional) — institution name, sourced from atms.bank",
+  "area": "string (optional) — human-readable locality, sourced from atms.area",
   "severity": "low|medium|high",
   "created_at": "ISO8601",
   "status": "new|acknowledged|resolved",
@@ -141,7 +145,10 @@ new business logic belongs in this endpoint (`BACKEND_SPEC.md`).
     "model_version": "string",
     "status": "ok | insufficient_confidence | insufficient_evidence",
     "top_result": {
-      "atm_id": "string", "risk_score": 0.0, "confidence": 0.0,
+      "atm_id": "string",
+      "bank": "string (optional) — institution name, sourced from atms.bank",
+      "area": "string (optional) — human-readable locality, sourced from atms.area",
+      "risk_score": 0.0, "confidence": 0.0,
       "predicted_window": { "start": "ISO8601", "end": "ISO8601" }
     }
   },
