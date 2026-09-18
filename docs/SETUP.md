@@ -19,6 +19,7 @@ sih-project/
     SETUP.md
   backend/          # P1 + P5
     app/
+    scripts/        # one-off admin scripts (seed_users.py, etc.)
     tests/
     requirements.txt
   ml/               # P2 — trained/loaded by backend, developed independently
@@ -37,18 +38,34 @@ sih-project/
 
 ## Environment variables (backend `.env`, never commit real secrets)
 ```
-DATABASE_URL=postgresql://user:password@localhost:5432/sih_db
-JWT_SECRET=changeme
+DATABASE_URL=postgresql://user:password@localhost:5432/cybercast_db
+JWT_SECRET=changeme-replace-in-production
 MODEL_PATH=./ml/models/latest.pkl
 ENV=development
 ```
+Copy `.env.example` to `.env` and fill in real secrets before running locally. The default `DATABASE_URL` matches `docker-compose.yml` exactly — no edit needed for local dev.
 
-## Local run (indicative — adjust to actual chosen tooling)
+## Local run
 ```bash
-# Backend
+# 1. Start the local Postgres database (requires Docker / Docker Desktop)
+#    Data persists in a named volume across restarts.
+#    Use 'docker compose down -v' for a clean-slate wipe.
+docker compose up -d
+
+# 2. Backend
 cd backend
-python -m venv venv && source venv/bin/activate
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# 3. Copy env and run DB migrations
+cp ../.env.example ../.env   # already has working defaults for local dev
+alembic upgrade head
+
+# 4. Seed placeholder users (one per role — idempotent, safe to re-run)
+python scripts/seed_users.py
+# Printed output shows the plaintext credentials for local testing.
+
+# 5. Start the backend API server
 uvicorn app.main:app --reload
 
 # Frontend

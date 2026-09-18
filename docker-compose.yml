@@ -1,0 +1,33 @@
+# docker-compose.yml — CyberCast local development database
+#
+# Starts a single postgres:16 service matching the default DATABASE_URL in
+# backend/app/core/config.py and .env.example:
+#   postgresql://user:password@localhost:5432/cybercast_db
+#
+# Usage:
+#   docker compose up -d          # start (detached)
+#   docker compose down           # stop (data persists in named volume)
+#   docker compose down -v        # stop AND delete all data
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: cybercast_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - cybercast_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d cybercast_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cybercast_pg_data:
+    # Named volume — data persists across docker compose down restarts.
+    # Use 'docker compose down -v' to delete it entirely (e.g. for a clean reset).

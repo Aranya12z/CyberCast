@@ -80,6 +80,7 @@ Event queues / streaming / async workers / message brokers are **FUTURE**, not M
 ## 8. Security & Auditability (supporting layer, not the centerpiece)
 - AuthN, RBAC (roles: investigator/LEA, bank/FI analyst, administrator), encryption in transit, audit logs, least-privilege access.
 - Audit log entries: `event_id, user, action, timestamp, resource, metadata`. The architecture must be able to answer: **"Who did what, when, and to which intelligence record?"**
+- Required audit events (canonical action names used in code): `login`, `logout`, `prediction_generated`, `prediction_viewed`, `alert_generated`, `alert_acknowledged`, `intelligence_viewed`, `data_modification`, `administrative_action`. Note: the intelligence event is named `intelligence_viewed` (not "intelligence report created") because the report is assembled on-the-fly from existing data at GET time — there is no separate creation step.
 - Explicitly out of scope for MVP: SOC infrastructure, zero-trust enterprise architecture, complex PKI, military-grade systems, advanced pentest infra. These are FUTURE only.
 
 ## 9. Explainability
