@@ -1,0 +1,634 @@
+{
+  "info": {
+    "_postman_id": "cybercast-api-v1",
+    "name": "CyberCast API",
+    "description": "CyberCast — AI-driven ATM withdrawal risk forecasting.\n\nMirrors API_SPEC.md exactly.\n\nBase URL variable: {{base_url}} (default: http://localhost:8000)\nAuth token variable: {{access_token}} (set automatically by the Login request test script)\n\nWorkflow:\n1. Run 'Auth / Login' — access_token is auto-saved to collection variable\n2. All other requests use Bearer {{access_token}} automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",     "value": "http://localhost:8000", "type": "string" },
+    { "key": "access_token", "value": "",                      "type": "string" },
+    { "key": "crime_id",     "value": "",                      "type": "string" },
+    { "key": "atm_id",       "value": "",                      "type": "string" },
+    { "key": "alert_id",     "value": "",                      "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "POST /api/auth/login — POST /api/auth/logout — GET /api/auth/me\n\nReference: API_SPEC.md §/api/auth/*  [MVP TARGET]",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has access_token', () => pm.expect(json).to.have.property('access_token'));",
+                  "pm.test('Has role', () => pm.expect(json).to.have.property('role'));",
+                  "pm.collectionVariables.set('access_token', json.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"Test Investigator\",\n  \"password\": \"investigator_pass\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "response": [
+            {
+              "name": "200 OK — access_token issued",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"access_token\": \"<jwt>\",\n  \"token_type\": \"bearer\",\n  \"role\": \"investigator\"\n}"
+            },
+            {
+              "name": "401 Unauthorized — wrong credentials",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_401\",\n    \"message\": \"Incorrect username or password\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Current User (me)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has user_id', () => pm.expect(json).to.have.property('user_id'));",
+                  "pm.test('Has name',    () => pm.expect(json).to.have.property('name'));",
+                  "pm.test('Has role',    () => pm.expect(json).to.have.property('role'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/auth/me", "host": ["{{base_url}}"], "path": ["api", "auth", "me"] }
+          },
+          "response": [
+            {
+              "name": "200 OK — user profile",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"user_id\": \"<uuid>\",\n  \"name\": \"Test Investigator\",\n  \"role\": \"investigator\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('access_token', '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] }
+          },
+          "response": [
+            {
+              "name": "200 OK — logged out",
+              "status": "OK",
+              "code": 200,
+              "body": "{ \"message\": \"Logged out successfully\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Crimes",
+      "description": "GET /api/crimes — GET /api/crimes/{crime_id} — POST /api/crimes\n\nReference: API_SPEC.md §/api/crimes/*",
+      "item": [
+        {
+          "name": "List Crimes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/crimes?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "crimes"],
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "offset", "value": "0"  },
+                { "key": "crime_type", "value": "", "disabled": true },
+                { "key": "from_date",  "value": "", "disabled": true },
+                { "key": "to_date",    "value": "", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Crime by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has crime_id', () => pm.expect(json).to.have.property('crime_id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/crimes/{{crime_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "crimes", "{{crime_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_404\",\n    \"message\": \"Crime incident not found\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Crime (Ingest Complaint)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has crime_id', () => pm.expect(json).to.have.property('crime_id'));",
+                  "pm.collectionVariables.set('crime_id', json.crime_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crime_type\": \"atm_fraud\",\n  \"timestamp\": \"2026-09-18T10:00:00Z\",\n  \"location\": { \"lat\": 12.9716, \"lng\": 77.5946 },\n  \"amount\": 75000.0\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/crimes", "host": ["{{base_url}}"], "path": ["api", "crimes"] }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"crime_id\": \"<uuid>\",\n  \"crime_type\": \"atm_fraud\",\n  \"timestamp\": \"2026-09-18T10:00:00+00:00\",\n  \"latitude\": 12.9716,\n  \"longitude\": 77.5946,\n  \"amount\": 75000.0\n}"
+            },
+            {
+              "name": "409 Conflict — duplicate complaint",
+              "status": "Conflict",
+              "code": 409,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_409\",\n    \"message\": \"Duplicate complaint\",\n    \"details\": {}\n  }\n}"
+            },
+            {
+              "name": "422 Unprocessable — invalid coordinates",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Malformed request parameters or payload body.\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ATMs",
+      "description": "GET /api/atms — GET /api/atms/{atm_id}\n\nReference: API_SPEC.md §/api/atms/*",
+      "item": [
+        {
+          "name": "List ATMs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/atms?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "atms"],
+              "query": [
+                { "key": "limit",  "value": "50" },
+                { "key": "offset", "value": "0"  },
+                { "key": "bank",   "value": "", "disabled": true },
+                { "key": "area",   "value": "", "disabled": true },
+                { "key": "format", "value": "geojson", "disabled": true, "description": "Pass format=geojson for GeoJSON FeatureCollection output" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get ATM by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has atm_id', () => pm.expect(json).to.have.property('atm_id'));",
+                  "pm.test('Has historical_risk_score', () => pm.expect(json).to.have.property('historical_risk_score'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/atms/{{atm_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "atms", "{{atm_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_404\",\n    \"message\": \"ATM not found\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "description": "GET /api/transactions — filter by atm_id / account_id / time range\n\nReference: API_SPEC.md §/api/transactions/*  (MVP: synthetic data)",
+      "item": [
+        {
+          "name": "List Transactions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/transactions?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                { "key": "atm_id",     "value": "", "disabled": true },
+                { "key": "account_id", "value": "", "disabled": true },
+                { "key": "from_date",  "value": "", "disabled": true },
+                { "key": "to_date",    "value": "", "disabled": true },
+                { "key": "limit",      "value": "50" },
+                { "key": "offset",     "value": "0"  }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Predictions",
+      "description": "POST /api/predictions/{crime_id} — trigger synchronous prediction pipeline (ARCHITECTURE.md §6)\nGET  /api/predictions/{crime_id} — retrieve most recent prediction run\n\nReference: API_SPEC.md §/api/predictions/*  ADR-005 (6h window)  ADR-006 (alert thresholds)",
+      "item": [
+        {
+          "name": "Trigger Prediction Pipeline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has crime_id', () => pm.expect(json).to.have.property('crime_id'));",
+                  "pm.test('Has status',   () => pm.expect(json).to.have.property('status'));",
+                  "pm.test('Has predictions array', () => pm.expect(json.predictions).to.be.an('array'));",
+                  "pm.test('Status is valid enum',  () => {",
+                  "  pm.expect(json.status).to.be.oneOf(['ok','insufficient_confidence','insufficient_evidence']);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predictions/{{crime_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "predictions", "{{crime_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK — prediction result",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"crime_id\": \"<uuid>\",\n  \"generated_at\": \"2026-09-18T10:00:00+00:00\",\n  \"model_version\": \"mock_rf_v1.0.0\",\n  \"status\": \"ok\",\n  \"predictions\": [\n    {\n      \"atm_id\": \"<uuid>\",\n      \"risk_score\": 0.82,\n      \"confidence\": 0.75,\n      \"predicted_window\": {\n        \"start\": \"2026-09-18T10:00:00+00:00\",\n        \"end\": \"2026-09-18T16:00:00+00:00\"\n      },\n      \"explanation\": [\n        { \"feature\": \"distance_from_crime\", \"value\": 0.45, \"contribution\": \"high\" },\n        { \"feature\": \"atm_historical_risk\", \"value\": 0.72, \"contribution\": \"high\" }\n      ]\n    }\n  ]\n}"
+            },
+            {
+              "name": "200 OK — insufficient_confidence",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"crime_id\": \"<uuid>\",\n  \"generated_at\": \"2026-09-18T10:00:00+00:00\",\n  \"model_version\": \"mock_rf_v1.0.0\",\n  \"status\": \"insufficient_confidence\",\n  \"predictions\": []\n}"
+            },
+            {
+              "name": "404 Crime Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_404\",\n    \"message\": \"Crime incident not found\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Latest Prediction for Crime",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const code = pm.response.code;",
+                  "pm.test('Status 200 or 404', () => pm.expect(code).to.be.oneOf([200, 404]));",
+                  "if (code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.test('Has crime_id', () => pm.expect(json).to.have.property('crime_id'));",
+                  "  pm.test('Has status',   () => pm.expect(json).to.have.property('status'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predictions/{{crime_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "predictions", "{{crime_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "description": "GET /api/alerts — list, filterable by severity/status\nPOST /api/alerts/{alert_id}/acknowledge\n\nReference: API_SPEC.md §/api/alerts/*  ADR-006",
+      "item": [
+        {
+          "name": "List Alerts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Is array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "const alerts = pm.response.json();",
+                  "if (alerts.length > 0) {",
+                  "  pm.collectionVariables.set('alert_id', alerts[0].alert_id);",
+                  "  pm.test('Alert has severity', () => pm.expect(alerts[0]).to.have.property('severity'));",
+                  "  pm.test('Severity is valid',  () => pm.expect(alerts[0].severity).to.be.oneOf(['high','medium']));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "severity",      "value": "", "disabled": true, "description": "high | medium" },
+                { "key": "status_filter", "value": "", "disabled": true, "description": "new | acknowledged" },
+                { "key": "limit",         "value": "50" },
+                { "key": "offset",        "value": "0"  }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Acknowledge Alert",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Status is acknowledged', () => pm.expect(json.status).to.eql('acknowledged'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts/{{alert_id}}/acknowledge",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "{{alert_id}}", "acknowledge"]
+            }
+          },
+          "response": [
+            {
+              "name": "404 Alert Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_404\",\n    \"message\": \"Alert not found\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "description": "GET /api/dashboard/summary\n\nReference: API_SPEC.md §/api/dashboard/*",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has total_crimes',      () => pm.expect(json).to.have.property('total_crimes'));",
+                  "pm.test('Has total_predictions', () => pm.expect(json).to.have.property('total_predictions'));",
+                  "pm.test('Has active_alerts',     () => pm.expect(json).to.have.property('active_alerts'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "summary"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK — summary",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"total_crimes\": 42,\n  \"total_atms\": 15,\n  \"total_predictions\": 38,\n  \"active_alerts\": 7,\n  \"high_severity_alerts\": 3,\n  \"medium_severity_alerts\": 4,\n  \"recent_crimes\": [],\n  \"recent_alerts\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Intelligence",
+      "description": "GET /api/intelligence/{crime_id}\n\nAssembles the full intelligence report: crime detail + latest prediction + alerts + evidence summary.\nReference: API_SPEC.md §/api/intelligence/*",
+      "item": [
+        {
+          "name": "Get Intelligence Report",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has crime_id',         () => pm.expect(json).to.have.property('crime_id'));",
+                  "pm.test('Has crime',            () => pm.expect(json).to.have.property('crime'));",
+                  "pm.test('Has latest_prediction',() => pm.expect(json).to.have.property('latest_prediction'));",
+                  "pm.test('Has evidence',         () => pm.expect(json).to.have.property('evidence'));",
+                  "pm.test('Has related_alerts',   () => pm.expect(json).to.have.property('related_alerts'));",
+                  "pm.test('Has summary',          () => pm.expect(json).to.have.property('summary'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/intelligence/{{crime_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "intelligence", "{{crime_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK — intelligence report",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"crime_id\": \"<uuid>\",\n  \"crime\": { \"crime_id\": \"<uuid>\", \"crime_type\": \"atm_fraud\", \"timestamp\": \"...\", \"latitude\": 12.9716, \"longitude\": 77.5946, \"amount\": 75000.0 },\n  \"latest_prediction\": {\n    \"status\": \"ok\",\n    \"model_version\": \"mock_rf_v1.0.0\",\n    \"top_result\": { \"atm_id\": \"<uuid>\", \"risk_score\": 0.82, \"confidence\": 0.75 },\n    \"all_results\": []\n  },\n  \"related_alerts\": [],\n  \"evidence\": [],\n  \"summary\": \"High risk of ATM fraud detected near MG Road...\"\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": {\n    \"code\": \"HTTP_404\",\n    \"message\": \"Crime incident not found\",\n    \"details\": {}\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
