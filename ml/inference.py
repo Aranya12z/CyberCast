@@ -1,12 +1,17 @@
 """
 CyberCast ML Layer — Basic Inference Module (P2)
 Step 8A: single-candidate ATM risk scoring.
+Step 8B (ranking only): score multiple prepared candidates and return Top-K.
+Step 9A: build_candidate_features() — live 9-feature construction from contract payload.
+Step 9B: ModelInterface.predict() — end-to-end contract-in → ranked-predictions-out.
 
 Loads the trained RandomForest model bundle from ml/models/latest.pkl
 and returns a risk_score for ONE candidate ATM given its 9 feature values.
+rank_candidates() reuses predict_single() and sorts by risk_score.
+build_candidate_features() prepares those 9 values from a contract payload row.
 
 What is NOT implemented here (deferred to later steps):
-  - Top-K ranking across multiple candidates
+  - ModelInterface.predict() / full ML_GIS_CONTRACTS.md input payload
   - confidence threshold / insufficient_confidence check
   - predicted_window
   - feature-based explanation / contribution labels
@@ -19,8 +24,9 @@ Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1
 import math
 import pickle
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 # Ensure project root is on sys.path regardless of how this module is invoked
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -132,3 +138,289 @@ def predict_single(
         "risk_score":    risk_score,
         "model_version": model_version,
     }
+
+
+def rank_candidates(
+    candidates: List[Dict],
+    k: int,
+    model_path: Path = DEFAULT_MODEL_PATH,
+) -> List[Dict]:
+    """
+    Score multiple ATM candidates and return at most K, ranked by risk_score.
+
+    Each candidate must already contain atm_id plus the same 9 feature fields
+    accepted by predict_single(). K is a caller-supplied limit, not a
+    project-wide default — the contracts do not define a fixed K.
+
+    Returns a list of {"atm_id", "risk_score"} dicts, highest risk first.
+    Never invents extra rows if there are fewer than K real candidates.
+    An empty input list yields an empty result.
+    """
+    if not candidates or k <= 0:
+        return []
+
+    scored: List[Dict] = []
+
+    for candidate in candidates:
+        if "atm_id" not in candidate:
+            raise KeyError("Each candidate must include 'atm_id'.")
+
+        feature_kwargs = {}
+        for feat in FEATURE_NAMES:
+            if feat not in candidate:
+                raise KeyError(
+                    f"Candidate '{candidate.get('atm_id')}' is missing "
+                    f"required feature '{feat}'."
+                )
+            feature_kwargs[feat] = candidate[feat]
+
+        result = predict_single(model_path=model_path, **feature_kwargs)
+        scored.append({
+            "atm_id": candidate["atm_id"],
+            "risk_score": result["risk_score"],
+        })
+
+    scored.sort(key=lambda row: row["risk_score"], reverse=True)
+    return scored[:k]
+
+
+def _parse_iso8601(value: Any, field_name: str) -> datetime:
+    """Parse an ISO8601 timestamp, including values with Z or an offset."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"'{field_name}' must be a non-empty ISO8601 timestamp.")
+
+    text = value.strip()
+    if text.endswith("Z") or text.endswith("z"):
+        text = text[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as err:
+        raise ValueError(
+            f"'{field_name}' is not a valid ISO8601 timestamp: {value}"
+        ) from err
+
+    return parsed
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Compare instants in UTC. Naive timestamps are treated as UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _finite_float(value: Any, field_name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as err:
+        raise ValueError(
+            f"'{field_name}' must be numeric; got {value!r}."
+        ) from err
+
+    if math.isnan(number) or math.isinf(number):
+        raise ValueError(
+            f"'{field_name}' contains an invalid value: {number}. "
+            "NaN and Inf are not permitted."
+        )
+    return number
+
+
+def _count_recent_txns(
+    atm_id: str,
+    crime_ts: datetime,
+    recent_transactions: List[Dict],
+    window: timedelta,
+) -> float:
+    """Count this ATM's transactions in (crime_ts - window) .. crime_ts inclusive."""
+    window_start = crime_ts - window
+    count = 0
+    for txn in recent_transactions:
+        if not isinstance(txn, dict):
+            raise ValueError("Each recent transaction must be an object.")
+        if txn.get("atm_id") != atm_id:
+            continue
+        if "timestamp" not in txn:
+            raise KeyError(
+                f"Transaction for ATM '{atm_id}' is missing 'timestamp'."
+            )
+        txn_ts = _as_utc(_parse_iso8601(txn["timestamp"], "recent_transactions.timestamp"))
+        if window_start <= txn_ts <= crime_ts:
+            count += 1
+    return float(count)
+
+
+def build_candidate_features(
+    crime: Dict,
+    candidate_atm: Dict,
+    recent_transactions: Optional[List[Dict]] = None,
+) -> Dict:
+    """
+    Convert ONE contract candidate ATM into the 9-feature dict used by
+    predict_single() / rank_candidates().
+
+    Spatial fields and atm_historical_risk are consumed as provided.
+    Temporal and transaction-count features are derived here.
+
+    Implementation assumption: docs do not define withdrawal_frequency.
+    This helper sets it equal to txns_last_6h (the 6-hour transaction count
+    for this ATM). Do not treat that as a separately designed formula.
+    """
+    if not isinstance(crime, dict):
+        raise ValueError("'crime' must be an object.")
+    if not isinstance(candidate_atm, dict):
+        raise ValueError("'candidate_atm' must be an object.")
+
+    for field in ("timestamp", "amount"):
+        if field not in crime:
+            raise KeyError(f"crime is missing required field '{field}'.")
+
+    if "atm_id" not in candidate_atm:
+        raise KeyError("candidate_atm is missing required field 'atm_id'.")
+    if "atm_historical_risk" not in candidate_atm:
+        raise KeyError("candidate_atm is missing required field 'atm_historical_risk'.")
+    if "spatial_features" not in candidate_atm:
+        raise KeyError("candidate_atm is missing required field 'spatial_features'.")
+
+    spatial = candidate_atm["spatial_features"]
+    if not isinstance(spatial, dict):
+        raise ValueError("candidate_atm.spatial_features must be an object.")
+    for field in ("distance_from_crime", "nearby_crime_density"):
+        if field not in spatial:
+            raise KeyError(
+                f"candidate_atm.spatial_features is missing required field '{field}'."
+            )
+
+    if recent_transactions is None:
+        txns: List[Dict] = []
+    elif not isinstance(recent_transactions, list):
+        raise ValueError("'recent_transactions' must be a list.")
+    else:
+        txns = recent_transactions
+
+    crime_wall = _parse_iso8601(crime["timestamp"], "crime.timestamp")
+    crime_ts = _as_utc(crime_wall)
+    atm_id = candidate_atm["atm_id"]
+
+    txns_last_1h = _count_recent_txns(atm_id, crime_ts, txns, timedelta(hours=1))
+    txns_last_6h = _count_recent_txns(atm_id, crime_ts, txns, timedelta(hours=6))
+
+    features = {
+        "atm_id": atm_id,
+        "hour_of_day": float(crime_wall.hour),
+        "day_of_week": float(crime_wall.weekday()),
+        "amount": _finite_float(crime["amount"], "crime.amount"),
+        "distance_from_crime": _finite_float(
+            spatial["distance_from_crime"],
+            "spatial_features.distance_from_crime",
+        ),
+        "atm_historical_risk": _finite_float(
+            candidate_atm["atm_historical_risk"],
+            "candidate_atm.atm_historical_risk",
+        ),
+        "txns_last_1h": txns_last_1h,
+        "txns_last_6h": txns_last_6h,
+        "nearby_crime_density": _finite_float(
+            spatial["nearby_crime_density"],
+            "spatial_features.nearby_crime_density",
+        ),
+        # Assumption (docs unspecified): withdrawal_frequency uses the
+        # same transaction count as txns_last_6h. Not a separate formula.
+        "withdrawal_frequency": txns_last_6h,
+    }
+
+    for feat in FEATURE_NAMES:
+        _finite_float(features[feat], feat)
+
+    return features
+
+
+class ModelInterface:
+    """
+    Step 9B — End-to-end prediction interface for the CyberCast contract.
+
+    Accepts the same payload shape produced by the backend:
+        {
+            "crime":                { ... },
+            "candidate_atms":       [ ... ],
+            "recent_transactions":  [ ... ]   (optional)
+        }
+
+    Returns:
+        {
+            "model_version": "<version>",
+            "predictions":   [ {"atm_id": ..., "risk_score": ...}, ... ],
+            "status":        "ok"
+        }
+
+    K (max predictions returned) is set at construction time.
+    If k is None (the default), all candidates are returned.
+    """
+
+    def __init__(
+        self,
+        k: Optional[int] = None,
+        model_path: Path = DEFAULT_MODEL_PATH,
+    ) -> None:
+        self._k = k
+        self._model_path = model_path
+
+    def predict(self, payload: dict) -> dict:
+        """
+        Run the full inference pipeline on a contract payload.
+
+        1. Validate inputs.
+        2. Build 9-feature dicts for every candidate ATM.
+        3. Score and rank via rank_candidates().
+        4. Return the contract-shaped output envelope.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a dict.")
+
+        crime = payload.get("crime")
+        if not isinstance(crime, dict):
+            raise ValueError("payload must contain a 'crime' dict.")
+
+        candidate_atms = payload.get("candidate_atms")
+        if candidate_atms is None:
+            candidate_atms = []
+        if not isinstance(candidate_atms, list):
+            raise ValueError("'candidate_atms' must be a list.")
+
+        recent_transactions = payload.get("recent_transactions")
+        if recent_transactions is None:
+            recent_transactions = []
+        if not isinstance(recent_transactions, list):
+            raise ValueError("'recent_transactions' must be a list.")
+
+        # Determine effective K
+        effective_k = self._k if self._k is not None else len(candidate_atms)
+
+        # Empty candidates → fast return
+        if not candidate_atms or effective_k <= 0:
+            bundle = _load_bundle(self._model_path)
+            return {
+                "model_version": bundle["model_version"],
+                "predictions": [],
+                "status": "ok",
+            }
+
+        # Build feature dicts for every candidate
+        prepared: List[Dict] = []
+        for atm in candidate_atms:
+            features = build_candidate_features(
+                crime, atm, recent_transactions,
+            )
+            prepared.append(features)
+
+        # Score and rank
+        ranked = rank_candidates(prepared, k=effective_k, model_path=self._model_path)
+
+        # Retrieve model_version from the (already-cached) bundle
+        bundle = _load_bundle(self._model_path)
+
+        return {
+            "model_version": bundle["model_version"],
+            "predictions": ranked,
+            "status": "ok",
+        }
