@@ -73,6 +73,11 @@
 
 <!-- Add new ADRs below this line, following the same template. -->
 
+---
+
+### Doc-sync note — 2026-09-18
+**Not an ADR — no structural decision was made.** The `predictions[]` item example in `docs/API_SPEC.md` was missing three fields (`bank`, `area`, `location`) that were already present in both `backend/app/schemas/prediction.py` (PredictionResultItem) and `frontend/src/api/mocks/predictions.json`. The doc was updated to match the existing implementation on both sides. The change is purely additive — no field was removed, renamed, or retyped.
+
 ### ADR-XXX (template)
 **Decision:**
 **Context:**
