@@ -60,7 +60,7 @@ export const Overview = () => {
       <div className="p-8 flex items-center justify-center min-h-[400px]">
         <div className="flex items-center gap-3 text-indigo-400 font-mono text-sm">
           <Activity size={18} />
-          <span>Synchronizing with CyberCast Intelligence Core...</span>
+          <span>Loading dashboard summary...</span>
         </div>
       </div>
     );
@@ -71,37 +71,37 @@ export const Overview = () => {
   return (
     <div className="space-y-6">
       
-      {/* Top Banner: Hero Section with Exact Project Language */}
-      <div className="p-6 rounded-xl bg-slate-900 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Top Banner: Project Overview */}
+      <div className="p-5 sm:p-6 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-[11px] font-mono text-slate-300 mb-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>OPERATIONAL MONITORING ACTIVE</span>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-400 mb-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Operational Prototype Active</span>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
-            Predictive Cybercrime Cash-out Intelligence
+            Cybercrime Cash-Out Prediction & Early Intervention
           </h1>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-            Analyze cybercrime complaints, transaction patterns, time, and location signals to identify likely cash withdrawal locations for proactive intervention.
+            Analyzes cybercrime complaints, transaction velocity, and spatial signals to identify likely ATM cash-out points for proactive patrol and account intervention.
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
           <button
             onClick={() => setActiveTab('map')}
-            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-2"
+            className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition flex items-center gap-2 shadow-sm"
           >
-            <span>Launch GIS Map</span>
-            <ArrowRight size={15} />
+            <span>Open GIS Map</span>
+            <ArrowRight size={14} />
           </button>
         </div>
       </div>
 
-      {/* Data Trust Notice: Clearly communicating mock/demo dataset */}
-      <div className="px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center gap-2.5 text-xs text-slate-400">
+      {/* Demonstration Dataset Notice */}
+      <div className="px-4 py-2.5 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center gap-2.5 text-xs text-slate-400">
         <Info size={15} className="text-indigo-400 flex-shrink-0" />
         <span>
-          <strong className="text-slate-300 font-mono text-[11px] uppercase">Demonstration Environment:</strong> Displayed incidents, predictions, and transaction velocities represent simulated evaluation data for the Smart India Hackathon prototype.
+          <strong className="text-slate-300 font-medium">Demonstration Environment:</strong> Displayed incidents, predictions, and transaction velocities represent synthetic evaluation data for the Smart India Hackathon prototype.
         </span>
       </div>
 
@@ -113,12 +113,11 @@ export const Overview = () => {
           subtext="Requiring patrol or bank intervention"
           icon={ShieldAlert}
           alertLevel={active_alerts > 0 ? 'high' : 'none'}
-          badge={active_alerts > 0 ? "URGENT" : "CLEAR"}
         />
         <StatCard
           title="High-Risk Candidates"
           value={high_risk_predictions}
-          subtext="ATMs with 70% or greater likelihood"
+          subtext="ATMs with &ge; 70% withdrawal likelihood"
           icon={Target}
           alertLevel="high"
         />
@@ -132,7 +131,7 @@ export const Overview = () => {
         <StatCard
           title="Average Certainty"
           value={`${Math.round((prediction_stats?.avg_confidence || 0) * 100)}%`}
-          subtext="Overall model confidence metric"
+          subtext="Overall model confidence score"
           icon={CheckCircle2}
           alertLevel="none"
         />
@@ -145,14 +144,14 @@ export const Overview = () => {
         <div className="lg:col-span-2 p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
-              <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wide">
-                Active Cybercrime Ingestion Stream
+              <h2 className="text-sm font-semibold text-white">
+                Active Complaints Feed
               </h2>
               <p className="text-[11px] text-slate-400">
-                Incoming complaints for predictive cashout evaluation
+                Reported complaints evaluated for candidate ATM withdrawal locations
               </p>
             </div>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className="text-xs text-slate-400">
               {crimes.length} incidents logged
             </span>
           </div>
@@ -161,19 +160,19 @@ export const Overview = () => {
             {crimes.map(c => (
               <div
                 key={c.crime_id}
-                className="p-3.5 rounded-lg bg-slate-900 border border-slate-800/80 hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-indigo-400">{c.crime_id}</span>
-                    <span className="text-xs font-semibold text-slate-200">{c.crime_type}</span>
+                    <span className="font-mono text-xs font-semibold text-indigo-400">{c.crime_id}</span>
+                    <span className="text-xs font-medium text-slate-200">{c.crime_type}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1 font-mono">
+                  <div className="flex items-center gap-2.5 text-[11px] text-slate-400 mt-1 font-mono">
                     <span>Loss: ₹{c.amount?.toLocaleString('en-IN')}</span>
-                    <span>•</span>
-                    <span>Lat: {c.location.lat}, Lng: {c.location.lng}</span>
-                    <span>•</span>
-                    <span className="text-slate-400">{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC</span>
+                    <span className="text-slate-600">•</span>
+                    <span>Coord: {c.location.lat}, {c.location.lng}</span>
+                    <span className="text-slate-600">•</span>
+                    <span>{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC</span>
                   </div>
                 </div>
 
@@ -187,7 +186,7 @@ export const Overview = () => {
                   <button
                     onClick={() => handleTriggerPrediction(c.crime_id)}
                     disabled={isTriggering}
-                    className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center gap-1 shadow-sm"
+                    className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
                   >
                     <Play size={12} />
                     <span>Run Model</span>
@@ -201,11 +200,11 @@ export const Overview = () => {
         {/* Right 1 Col: Recent Operational Activity */}
         <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
           <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-white">
               Recent System Activity
             </h2>
             <p className="text-[11px] text-slate-400">
-              Audit log stream matching API specification
+              Activity log stream from predictive pipeline
             </p>
           </div>
 
@@ -246,3 +245,4 @@ export const Overview = () => {
     </div>
   );
 };
+
