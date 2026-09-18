@@ -21,9 +21,12 @@ confidence semantics (ARCHITECTURE.md §4, ML_SPEC.md §risk_score vs confidence
   and distinct case (e.g. strong pattern match on thin data).
 
 Overall confidence aggregation:
-  overall_confidence = arithmetic mean of candidate confidences in the run.
-  If overall_confidence < confidence_floor (default 0.35), returns
+  max_confidence = max of per-candidate confidences across the returned Top-K.
+  If max_confidence < confidence_floor (default 0.35), returns
   status="insufficient_confidence" with predictions=[].
+  Rationale: if at least one Top-K candidate has sufficient data support, the
+  run is meaningful; requiring the *average* to clear the floor wrongly penalises
+  runs that include distant/inactive fallback candidates alongside a strong match.
 
 explanation semantics (ML_SPEC.md §Explainability, ML_GIS_CONTRACTS.md §1):
   Top 3 features ranked by the model's global feature_importances_, descending.
@@ -541,13 +544,16 @@ class ModelInterface:
         # Determine effective K
         effective_k = self._k if self._k is not None else len(candidate_atms)
 
-        # Empty candidates → fast return
+        # Empty candidates → insufficient_evidence (ML_SPEC.md §Confidence)
+        # No candidate ATMs means there is genuinely no evidence to score;
+        # returning "ok" with an empty list would misrepresent a data-gap as a
+        # clean successful run.
         if not candidate_atms or effective_k <= 0:
             bundle = _load_bundle(self._model_path)
             return {
                 "model_version": bundle["model_version"],
                 "predictions": [],
-                "status": "ok",
+                "status": "insufficient_evidence",
             }
 
         # Build feature dicts for every candidate
@@ -566,16 +572,18 @@ class ModelInterface:
         model_version = bundle["model_version"]
 
         # ----- Step 10: overall confidence floor -----
-        # Transparent overall confidence aggregation: arithmetic mean of
-        # candidate confidences across all ranked candidates.
-        # If overall confidence falls below confidence_floor (default 0.35),
-        # return status="insufficient_confidence" with an empty predictions list.
+        # Use the MAX per-candidate confidence across the returned Top-K.
+        # If even the best-supported ranked candidate falls below the floor,
+        # the run lacks sufficient data signal and we decline to return
+        # predictions (status="insufficient_confidence").
+        # This allows a single high-confidence candidate to keep the run valid
+        # even when other candidates have thin data support.
         if ranked:
-            overall_confidence = sum(r["confidence"] for r in ranked) / len(ranked)
+            max_confidence = max(r["confidence"] for r in ranked)
         else:
-            overall_confidence = 0.0
+            max_confidence = 0.0
 
-        if overall_confidence < self._confidence_floor:
+        if max_confidence < self._confidence_floor:
             return {
                 "model_version": model_version,
                 "predictions": [],
