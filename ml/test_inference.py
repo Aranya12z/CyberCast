@@ -162,7 +162,7 @@ def run_tests() -> int:
                                 isinstance(conf_high, float)
                                 and 0.0 <= conf_high <= 1.0,
                                 f"got {conf_high}") else 1
-        failures += 0 if check("confidence >= 0.5 (binary max-prob)",
+        failures += 0 if check("confidence >= 0.5 (strong signal support)",
                                 conf_high >= 0.5, f"got {conf_high:.6f}") else 1
         print(f"        risk_score    = {rs_high:.6f}")
         print(f"        confidence    = {conf_high:.6f}")
@@ -527,9 +527,19 @@ def run_tests() -> int:
             },
         ],
         "recent_transactions": [
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T14:20:00Z", "amount": 1000},
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T14:15:00Z", "amount": 1500},
             {"atm_id": "atm-close", "timestamp": "2026-09-16T14:00:00Z", "amount": 1000},
             {"atm_id": "atm-close", "timestamp": "2026-09-16T13:45:00Z", "amount": 2000},
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T13:30:00Z", "amount": 500},
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T13:00:00Z", "amount": 2500},
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T12:00:00Z", "amount": 3000},
+            {"atm_id": "atm-close", "timestamp": "2026-09-16T11:00:00Z", "amount": 1000},
             {"atm_id": "atm-mid",   "timestamp": "2026-09-16T14:10:00Z", "amount": 500},
+            {"atm_id": "atm-mid",   "timestamp": "2026-09-16T13:50:00Z", "amount": 800},
+            {"atm_id": "atm-mid",   "timestamp": "2026-09-16T12:30:00Z", "amount": 1200},
+            {"atm_id": "atm-mid",   "timestamp": "2026-09-16T11:15:00Z", "amount": 600},
+            {"atm_id": "atm-far",   "timestamp": "2026-09-16T14:05:00Z", "amount": 300},
         ],
     }
     try:
@@ -669,43 +679,79 @@ def run_tests() -> int:
         check("ModelInterface.predict() missing key", False, str(exc))
 
     # ==================================================================
-    # Step 10: Confidence handling
+    # Step 10: Confidence handling (Signal Support / Data Density)
     # ==================================================================
-    print("\n[Test 19] predict_single(): confidence is separate from risk_score")
+    print("\n[Test 19] predict_single(): strong supporting signal -> high confidence")
     try:
-        # High-signal: risk_score should be high, confidence should be high
-        r_high = predict_single(
+        r_strong = predict_single(
             hour_of_day=14, day_of_week=2, amount=45000.0,
-            distance_from_crime=0.85, atm_historical_risk=0.78,
-            txns_last_1h=12, txns_last_6h=38,
+            distance_from_crime=0.85, atm_historical_risk=0.85,
+            txns_last_1h=5, txns_last_6h=12,
             nearby_crime_density=7.2, withdrawal_frequency=54.0,
         )
-        # Low-signal: risk_score should be low, confidence should be high
-        # (model is confident it is NOT the withdrawal location)
-        r_low = predict_single(
-            hour_of_day=14, day_of_week=2, amount=45000.0,
-            distance_from_crime=11.30, atm_historical_risk=0.15,
-            txns_last_1h=0, txns_last_6h=4,
-            nearby_crime_density=0.8, withdrawal_frequency=8.5,
-        )
-        failures += 0 if check("high-signal risk_score > low-signal risk_score",
-                                r_high["risk_score"] > r_low["risk_score"],
-                                f"{r_high['risk_score']:.4f} vs {r_low['risk_score']:.4f}") else 1
-        failures += 0 if check("confidence and risk_score are different keys",
-                                "confidence" in r_high and "risk_score" in r_high
-                                and r_high["confidence"] != r_high.get("__none__")) else 1
-        failures += 0 if check("high-signal confidence >= 0.5",
-                                r_high["confidence"] >= 0.5) else 1
-        failures += 0 if check("low-signal confidence >= 0.5",
-                                r_low["confidence"] >= 0.5,
-                                f"got {r_low['confidence']:.6f}") else 1
-        print(f"        high: risk={r_high['risk_score']:.4f}, conf={r_high['confidence']:.4f}")
-        print(f"        low:  risk={r_low['risk_score']:.4f}, conf={r_low['confidence']:.4f}")
+        failures += 0 if check("strong signal confidence in [0, 1]",
+                                isinstance(r_strong["confidence"], float)
+                                and 0.0 <= r_strong["confidence"] <= 1.0) else 1
+        failures += 0 if check("strong signal confidence >= 0.75",
+                                r_strong["confidence"] >= 0.75,
+                                f"got {r_strong['confidence']:.4f}") else 1
+        # Formula check: 0.5 * 0.85 + 0.5 * min(1.0, 12/10) = 0.425 + 0.50 = 0.925
+        failures += 0 if check("strong signal confidence matches formula (0.925)",
+                                abs(r_strong["confidence"] - 0.925) < 1e-4,
+                                f"got {r_strong['confidence']}") else 1
+        print(f"        strong support: risk={r_strong['risk_score']:.4f}, conf={r_strong['confidence']:.4f}")
     except Exception as exc:
         failures += 1
-        check("predict_single() confidence test", False, str(exc))
+        check("predict_single() strong signal test", False, str(exc))
 
-    print("\n[Test 20] ModelInterface: high-confidence payload returns status 'ok'")
+    print("\n[Test 20] predict_single(): weak supporting signal -> low confidence")
+    try:
+        r_weak = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=11.30, atm_historical_risk=0.05,
+            txns_last_1h=0, txns_last_6h=1,
+            nearby_crime_density=0.8, withdrawal_frequency=8.5,
+        )
+        failures += 0 if check("weak signal confidence in [0, 1]",
+                                isinstance(r_weak["confidence"], float)
+                                and 0.0 <= r_weak["confidence"] <= 1.0) else 1
+        failures += 0 if check("weak signal confidence < 0.20",
+                                r_weak["confidence"] < 0.20,
+                                f"got {r_weak['confidence']:.4f}") else 1
+        # Formula check: 0.5 * 0.05 + 0.5 * min(1.0, 1/10) = 0.025 + 0.05 = 0.075
+        failures += 0 if check("weak signal confidence matches formula (0.075)",
+                                abs(r_weak["confidence"] - 0.075) < 1e-4,
+                                f"got {r_weak['confidence']}") else 1
+        print(f"        weak support:   risk={r_weak['risk_score']:.4f}, conf={r_weak['confidence']:.4f}")
+    except Exception as exc:
+        failures += 1
+        check("predict_single() weak signal test", False, str(exc))
+
+    print("\n[Test 21] predict_single(): high risk + low confidence can exist (ARCHITECTURE.md §4)")
+    try:
+        # Geographic match (close distance, high crime density) giving strong model risk,
+        # but thin supporting signal (sparse transactions, minimal historical risk).
+        r_thin = predict_single(
+            hour_of_day=14, day_of_week=2, amount=45000.0,
+            distance_from_crime=0.85, atm_historical_risk=0.05,
+            txns_last_1h=0, txns_last_6h=0,
+            nearby_crime_density=7.2, withdrawal_frequency=54.0,
+        )
+        failures += 0 if check("risk_score is elevated (>= 0.40)",
+                                r_thin["risk_score"] >= 0.40,
+                                f"got {r_thin['risk_score']:.4f}") else 1
+        failures += 0 if check("confidence is low (< 0.35 floor)",
+                                r_thin["confidence"] < 0.35,
+                                f"got {r_thin['confidence']:.4f}") else 1
+        failures += 0 if check("risk_score and confidence are separate values",
+                                r_thin["risk_score"] != r_thin["confidence"],
+                                f"risk={r_thin['risk_score']:.4f}, conf={r_thin['confidence']:.4f}") else 1
+        print(f"        high risk / low conf: risk={r_thin['risk_score']:.4f}, conf={r_thin['confidence']:.4f}")
+    except Exception as exc:
+        failures += 1
+        check("predict_single() high risk / low conf test", False, str(exc))
+
+    print("\n[Test 22] ModelInterface: sufficient support returns status 'ok'")
     try:
         mi = ModelInterface()  # default confidence_floor=0.35
         result = mi.predict(contract_payload)
@@ -713,7 +759,6 @@ def run_tests() -> int:
                                 f"got {result['status']}") else 1
         failures += 0 if check("predictions are non-empty",
                                 len(result["predictions"]) > 0) else 1
-        # All predictions should have confidence
         for p in result["predictions"]:
             failures += 0 if check(
                 f"  {p['atm_id']}: confidence in [0,1]",
@@ -722,31 +767,54 @@ def run_tests() -> int:
             ) else 1
     except Exception as exc:
         failures += 1
-        check("ModelInterface high-confidence test", False, str(exc))
+        check("ModelInterface sufficient support test", False, str(exc))
 
-    print("\n[Test 21] ModelInterface: insufficient_confidence via high confidence_floor")
+    print("\n[Test 23] ModelInterface: insufficient_confidence via thin-data payload")
     try:
-        # Set confidence_floor unrealistically high (1.1) so it always triggers.
-        # This is deterministic and does not depend on model behavior.
-        mi_strict = ModelInterface(confidence_floor=1.1)
-        result_strict = mi_strict.predict(contract_payload)
-        failures += 0 if check("status is 'insufficient_confidence'",
-                                result_strict["status"] == "insufficient_confidence",
-                                f"got {result_strict['status']}") else 1
+        # All candidate ATMs have low historical risk and zero recent transactions
+        thin_payload = {
+            "crime": {
+                "crime_id": "c_thin",
+                "crime_type": "upi_fraud",
+                "timestamp": "2026-09-16T14:30:00Z",
+                "location": {"lat": 12.97, "lng": 77.59},
+                "amount": 25000.0,
+            },
+            "candidate_atms": [
+                {
+                    "atm_id": "atm-thin-1",
+                    "location": {"lat": 12.98, "lng": 77.60},
+                    "atm_historical_risk": 0.05,
+                    "spatial_features": {"distance_from_crime": 1.0, "nearby_crime_density": 2.0},
+                },
+                {
+                    "atm_id": "atm-thin-2",
+                    "location": {"lat": 13.00, "lng": 77.62},
+                    "atm_historical_risk": 0.10,
+                    "spatial_features": {"distance_from_crime": 2.5, "nearby_crime_density": 1.0},
+                },
+            ],
+            "recent_transactions": [],  # zero supporting transactions
+        }
+        mi_default = ModelInterface()
+        result_thin = mi_default.predict(thin_payload)
+        failures += 0 if check("status is 'insufficient_confidence' on thin data",
+                                result_thin["status"] == "insufficient_confidence",
+                                f"got {result_thin['status']}") else 1
         failures += 0 if check("predictions list is empty",
-                                result_strict["predictions"] == [],
-                                f"got {len(result_strict['predictions'])} predictions") else 1
+                                result_thin["predictions"] == [],
+                                f"got {len(result_thin['predictions'])} predictions") else 1
         failures += 0 if check("model_version still returned",
-                                isinstance(result_strict["model_version"], str)
-                                and len(result_strict["model_version"]) > 0) else 1
+                                isinstance(result_thin["model_version"], str)
+                                and len(result_thin["model_version"]) > 0) else 1
     except Exception as exc:
         failures += 1
-        check("ModelInterface insufficient_confidence test", False, str(exc))
+        check("ModelInterface thin-data test", False, str(exc))
 
-    print("\n[Test 22] ModelInterface: confidence_floor=0.0 never triggers insufficient")
+    print("\n[Test 24] ModelInterface: confidence_floor=0.0 returns predictions on thin data")
     try:
         mi_zero = ModelInterface(confidence_floor=0.0)
-        result_zero = mi_zero.predict(contract_payload)
+        result_zero = mi_zero.predict(thin_payload)
         failures += 0 if check("status is 'ok' with floor=0.0",
                                 result_zero["status"] == "ok") else 1
         failures += 0 if check("predictions returned with floor=0.0",
@@ -755,7 +823,7 @@ def run_tests() -> int:
         failures += 1
         check("ModelInterface confidence_floor=0 test", False, str(exc))
 
-    print("\n[Test 23] DEFAULT_CONFIDENCE_FLOOR is 0.35")
+    print("\n[Test 25] DEFAULT_CONFIDENCE_FLOOR is 0.35")
     failures += 0 if check("DEFAULT_CONFIDENCE_FLOOR == 0.35",
                             DEFAULT_CONFIDENCE_FLOOR == 0.35,
                             f"got {DEFAULT_CONFIDENCE_FLOOR}") else 1

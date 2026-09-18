@@ -11,19 +11,25 @@ and returns a risk_score for ONE candidate ATM given its 9 feature values.
 rank_candidates() reuses predict_single() and sorts by risk_score.
 build_candidate_features() prepares those 9 values from a contract payload row.
 
-confidence semantics (ML_SPEC.md §risk_score vs confidence):
-  risk_score  = P(positive class) — the ranking key.
-  confidence  = max(P(class_0), P(class_1)) — how certain the model is about
-                its call for this candidate, regardless of direction.
+confidence semantics (ARCHITECTURE.md §4, ML_SPEC.md §risk_score vs confidence):
+  risk_score  = P(positive class) — model likelihood, the ranking key.
+  confidence  = 0.5 * atm_historical_risk + 0.5 * min(1.0, txns_last_6h / 10)
+                Measures certainty based on supporting data signal (historical
+                risk profile + recent transaction volume). Normalized to [0, 1].
   These are separate outputs: a high risk_score with low confidence is a valid
-  and distinct case.
+  and distinct case (e.g. strong pattern match on thin data).
+
+Overall confidence aggregation:
+  overall_confidence = arithmetic mean of candidate confidences in the run.
+  If overall_confidence < confidence_floor (default 0.35), returns
+  status="insufficient_confidence" with predictions=[].
 
 What is NOT implemented here (deferred to later steps):
   - predicted_window
   - feature-based explanation / contribution labels
   - backend / FastAPI integration
 
-Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1
+Reference: docs/ML_SPEC.md, docs/ML_GIS_CONTRACTS.md §1, docs/ARCHITECTURE.md §4
 """
 
 import math
@@ -94,9 +100,10 @@ def predict_single(
         risk_score    (float in [0, 1]) — model's estimated probability
                       that this candidate ATM is the withdrawal location.
                       This is the ranking key for Top-K logic.
-        confidence    (float in [0.5, 1]) — max(P(class_0), P(class_1)).
-                      How certain the model is about its call for this
-                      candidate, independent of direction.
+        confidence    (float in [0, 1]) — signal support / data density score:
+                      0.5 * atm_historical_risk + 0.5 * min(1.0, txns_last_6h / 10).
+                      Measures how much relevant historical and transactional
+                      evidence backs the estimate for this specific candidate.
         model_version (str)             — version identifier of the loaded model.
     """
     bundle = _load_bundle(model_path)
@@ -138,10 +145,15 @@ def predict_single(
             f"Expected exactly 9 features; got {len(feature_vector)}."
         )
 
-    # Full probability vector for both classes
-    proba = model.predict_proba([feature_vector])[0]
-    risk_score = float(proba[1])          # P(positive class)
-    confidence = float(max(proba[0], proba[1]))  # certainty of the call
+    # Probability for the positive class (index 1 = withdrawal location)
+    risk_score = float(model.predict_proba([feature_vector])[0][1])
+
+    # Confidence per ARCHITECTURE.md §4 & ML_SPEC.md (Signal Support / Data Density):
+    # confidence = 0.5 * atm_historical_risk + 0.5 * min(1.0, txns_last_6h / 10)
+    # Both components are bounded in [0, 1], guaranteeing confidence in [0, 1].
+    hist_signal = max(0.0, min(1.0, float(atm_historical_risk)))
+    txn_signal = max(0.0, min(1.0, float(txns_last_6h) / 10.0))
+    confidence = float(round(0.5 * hist_signal + 0.5 * txn_signal, 6))
 
     return {
         "risk_score":    risk_score,
@@ -446,14 +458,16 @@ class ModelInterface:
         model_version = bundle["model_version"]
 
         # ----- Step 10: overall confidence floor -----
-        # Mean confidence across all ranked candidates.
-        # If below the floor, return insufficient_confidence with no predictions.
+        # Transparent overall confidence aggregation: arithmetic mean of
+        # candidate confidences across all ranked candidates.
+        # If overall confidence falls below confidence_floor (default 0.35),
+        # return status="insufficient_confidence" with an empty predictions list.
         if ranked:
-            mean_confidence = sum(r["confidence"] for r in ranked) / len(ranked)
+            overall_confidence = sum(r["confidence"] for r in ranked) / len(ranked)
         else:
-            mean_confidence = 0.0
+            overall_confidence = 0.0
 
-        if mean_confidence < self._confidence_floor:
+        if overall_confidence < self._confidence_floor:
             return {
                 "model_version": model_version,
                 "predictions": [],
