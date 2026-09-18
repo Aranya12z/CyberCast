@@ -1,0 +1,168 @@
+{
+  "crm-890214": {
+    "crime_id": "crm-890214",
+    "generated_at": "2026-09-17T11:42:15Z",
+    "model_version": "rf_v1_20260917",
+    "predictions": [
+      {
+        "atm_id": "atm-hdfc-8821",
+        "bank": "HDFC Bank",
+        "area": "Koramangala 4th Block",
+        "location": { "lat": 12.9341, "lng": 77.6258 },
+        "risk_score": 0.88,
+        "confidence": 0.82,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 0.35, "contribution": "high" },
+          { "feature": "nearby_crime_density", "value": 8.5, "contribution": "high" },
+          { "feature": "txns_last_1h", "value": 14.0, "contribution": "medium" },
+          { "feature": "atm_historical_risk", "value": 0.79, "contribution": "high" },
+          { "feature": "hour_of_day", "value": 11.0, "contribution": "low" }
+        ]
+      },
+      {
+        "atm_id": "atm-sbi-4102",
+        "bank": "State Bank of India",
+        "area": "Koramangala Sony World Signal",
+        "location": { "lat": 12.9372, "lng": 77.6289 },
+        "risk_score": 0.74,
+        "confidence": 0.78,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 0.82, "contribution": "high" },
+          { "feature": "atm_historical_risk", "value": 0.72, "contribution": "medium" },
+          { "feature": "txns_last_6h", "value": 42.0, "contribution": "medium" },
+          { "feature": "nearby_crime_density", "value": 6.2, "contribution": "medium" }
+        ]
+      },
+      {
+        "atm_id": "atm-icici-1904",
+        "bank": "ICICI Bank",
+        "area": "Koramangala 1st Block",
+        "location": { "lat": 12.9298, "lng": 77.6321 },
+        "risk_score": 0.58,
+        "confidence": 0.65,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 1.45, "contribution": "medium" },
+          { "feature": "withdrawal_frequency", "value": 3.8, "contribution": "medium" },
+          { "feature": "atm_historical_risk", "value": 0.48, "contribution": "low" }
+        ]
+      },
+      {
+        "atm_id": "atm-axis-3312",
+        "bank": "Axis Bank",
+        "area": "Tavarekere Main Rd",
+        "location": { "lat": 12.9245, "lng": 77.6184 },
+        "risk_score": 0.42,
+        "confidence": 0.55,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 1.95, "contribution": "low" },
+          { "feature": "nearby_crime_density", "value": 4.1, "contribution": "low" }
+        ]
+      },
+      {
+        "atm_id": "atm-canara-5011",
+        "bank": "Canara Bank",
+        "area": "BTM 1st Stage",
+        "location": { "lat": 12.9189, "lng": 77.6120 },
+        "risk_score": 0.28,
+        "confidence": 0.48,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 2.85, "contribution": "low" },
+          { "feature": "atm_historical_risk", "value": 0.22, "contribution": "low" }
+        ]
+      }
+    ],
+    "status": "ok"
+  },
+  "crm-778210": {
+    "crime_id": "crm-778210",
+    "generated_at": "2026-09-17T10:30:00Z",
+    "model_version": "rf_v1_20260917",
+    "predictions": [
+      {
+        "atm_id": "atm-sbi-ind-02",
+        "bank": "State Bank of India",
+        "area": "Indiranagar 100ft Road",
+        "location": { "lat": 12.9772, "lng": 77.6415 },
+        "risk_score": 0.81,
+        "confidence": 0.84,
+        "predicted_window": {
+          "start": "2026-09-17T10:30:00Z",
+          "end": "2026-09-17T16:30:00Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 0.18, "contribution": "high" },
+          { "feature": "atm_historical_risk", "value": 0.82, "contribution": "high" },
+          { "feature": "txns_last_1h", "value": 9.0, "contribution": "medium" }
+        ]
+      },
+      {
+        "atm_id": "atm-kotak-ind-05",
+        "bank": "Kotak Mahindra Bank",
+        "area": "Indiranagar CMH Road",
+        "location": { "lat": 12.9810, "lng": 77.6432 },
+        "risk_score": 0.65,
+        "confidence": 0.71,
+        "predicted_window": {
+          "start": "2026-09-17T10:30:00Z",
+          "end": "2026-09-17T16:30:00Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 0.62, "contribution": "medium" },
+          { "feature": "nearby_crime_density", "value": 5.4, "contribution": "medium" }
+        ]
+      }
+    ],
+    "status": "ok"
+  },
+  "crm-551092": {
+    "crime_id": "crm-551092",
+    "generated_at": "2026-09-17T09:12:00Z",
+    "model_version": "rf_v1_20260917",
+    "predictions": [
+      {
+        "atm_id": "atm-pnb-mg-01",
+        "bank": "Punjab National Bank",
+        "area": "MG Road Metro Station",
+        "location": { "lat": 12.9734, "lng": 77.6082 },
+        "risk_score": 0.68,
+        "confidence": 0.62,
+        "predicted_window": {
+          "start": "2026-09-17T09:12:00Z",
+          "end": "2026-09-17T15:12:00Z"
+        },
+        "explanation": [
+          { "feature": "distance_from_crime", "value": 1.2, "contribution": "medium" },
+          { "feature": "atm_historical_risk", "value": 0.61, "contribution": "medium" }
+        ]
+      }
+    ],
+    "status": "ok"
+  },
+  "crm-104921": {
+    "crime_id": "crm-104921",
+    "generated_at": "2026-09-17T07:45:00Z",
+    "model_version": "rf_v1_20260917",
+    "predictions": [],
+    "status": "insufficient_confidence"
+  }
+}

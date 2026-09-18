@@ -1,0 +1,73 @@
+{
+  "crm-890214": {
+    "crime_id": "crm-890214",
+    "crime": {
+      "crime_id": "crm-890214",
+      "crime_type": "UPI Fraud / Social Engineering",
+      "timestamp": "2026-09-17T11:20:00Z",
+      "location": { "lat": 12.9352, "lng": 77.6245 },
+      "amount": 125000.00
+    },
+    "latest_prediction": {
+      "generated_at": "2026-09-17T11:42:15Z",
+      "model_version": "rf_v1_20260917",
+      "status": "ok",
+      "top_result": {
+        "atm_id": "atm-hdfc-8821",
+        "bank": "HDFC Bank",
+        "area": "Koramangala 4th Block",
+        "risk_score": 0.88,
+        "confidence": 0.82,
+        "predicted_window": {
+          "start": "2026-09-17T11:42:15Z",
+          "end": "2026-09-17T17:42:15Z"
+        }
+      }
+    },
+    "evidence": [
+      { "feature": "distance_from_crime", "value": 0.35, "contribution": "high" },
+      { "feature": "nearby_crime_density", "value": 8.5, "contribution": "high" },
+      { "feature": "atm_historical_risk", "value": 0.79, "contribution": "high" },
+      { "feature": "txns_last_1h", "value": 14.0, "contribution": "medium" }
+    ],
+    "related_alerts": [
+      { "alert_id": "alt-9041", "severity": "high", "status": "new" },
+      { "alert_id": "alt-9042", "severity": "high", "status": "new" }
+    ],
+    "summary": "Complaint crm-890214 represents high-velocity UPI mule diversion (INR 1,25,000). Model predicts candidate ATM atm-hdfc-8821 (HDFC Bank, Koramangala 4th Block) as primary cashout hotspot with 88% risk likelihood within the 6-hour window ending 17:42 UTC. Immediate patrol alert dispatched."
+  },
+  "crm-778210": {
+    "crime_id": "crm-778210",
+    "crime": {
+      "crime_id": "crm-778210",
+      "crime_type": "ATM Card Skimming / Clone",
+      "timestamp": "2026-09-17T10:15:00Z",
+      "location": { "lat": 12.9784, "lng": 77.6408 },
+      "amount": 68000.00
+    },
+    "latest_prediction": {
+      "generated_at": "2026-09-17T10:30:00Z",
+      "model_version": "rf_v1_20260917",
+      "status": "ok",
+      "top_result": {
+        "atm_id": "atm-sbi-ind-02",
+        "bank": "State Bank of India",
+        "area": "Indiranagar 100ft Road",
+        "risk_score": 0.81,
+        "confidence": 0.84,
+        "predicted_window": {
+          "start": "2026-09-17T10:30:00Z",
+          "end": "2026-09-17T16:30:00Z"
+        }
+      }
+    },
+    "evidence": [
+      { "feature": "distance_from_crime", "value": 0.18, "contribution": "high" },
+      { "feature": "atm_historical_risk", "value": 0.82, "contribution": "high" }
+    ],
+    "related_alerts": [
+      { "alert_id": "alt-8812", "severity": "high", "status": "acknowledged" }
+    ],
+    "summary": "Complaint crm-778210 matches known skimming device profile. Candidate ATM atm-sbi-ind-02 flagged with 81% risk likelihood and 84% confidence score within 6-hour forecast window. Bank liaison notified."
+  }
+}
