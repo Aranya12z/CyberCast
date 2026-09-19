@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.common import PredictedWindow
+from app.schemas.common import LocationSchema, PredictedWindow
 from app.schemas.crime import CrimeResponse
 from app.schemas.prediction import ExplanationItem
 
@@ -16,6 +16,9 @@ class TopResultItem(BaseModel):
     atm_id: str = Field(..., description="Target ATM UUID")
     bank: Optional[str] = Field(default=None, description="Bank name")
     area: Optional[str] = Field(default=None, description="Area / locality name")
+    location: Optional[LocationSchema] = Field(
+        default=None, description="ATM WGS84 coordinates"
+    )
     risk_score: float = Field(..., ge=0.0, le=1.0, description="Predicted risk likelihood [0, 1]")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Certainty score [0, 1]")
     predicted_window: PredictedWindow = Field(..., description="6-hour operational window (UTC)")

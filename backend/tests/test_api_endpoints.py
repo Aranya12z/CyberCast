@@ -174,6 +174,11 @@ def test_prediction_and_alert_api_flow(client, seed_pipeline_data):
     assert "start" in top_pred["predicted_window"]
     assert "end" in top_pred["predicted_window"]
     assert len(top_pred["explanation"]) > 0
+    # Regression: bank/area/location must be present and non-null on the POST
+    # trigger response, not just on the follow-up GET (the original bug).
+    assert top_pred.get("bank") is not None, "POST response: bank is null on prediction"
+    assert top_pred.get("area") is not None, "POST response: area is null on prediction"
+    assert top_pred.get("location") is not None, "POST response: location is null on prediction"
 
     # 2. Get latest prediction
     res_get_pred = client.get(f"/api/predictions/{crime_id}")
@@ -211,6 +216,12 @@ def test_prediction_and_alert_api_flow(client, seed_pipeline_data):
     assert len(intel["evidence"]) > 0
     assert len(intel["related_alerts"]) > 0
     assert len(intel["summary"]) > 0
+    # Regression: bank/area/location must be non-null in intelligence top_result.
+    top_result = intel["latest_prediction"]["top_result"]
+    assert top_result is not None
+    assert top_result.get("bank") is not None, "intelligence top_result: bank is null"
+    assert top_result.get("area") is not None, "intelligence top_result: area is null"
+    assert top_result.get("location") is not None, "intelligence top_result: location is null"
 
     # 6. Get Dashboard Summary
     res_dash = client.get("/api/dashboard/summary")

@@ -72,13 +72,15 @@ def generate_intelligence_report(
         top_result_dict = None
         if top_result:
             top_atm = db.get(ATM, top_result.atm_id)
+            _lat = float(top_atm.latitude) if (top_atm and top_atm.latitude is not None) else None
+            _lng = float(top_atm.longitude) if (top_atm and top_atm.longitude is not None) else None
             top_result_dict = {
                 "atm_id": str(top_result.atm_id),
                 "bank": top_atm.bank if top_atm else None,
                 "area": top_atm.area if top_atm else None,
                 "location": (
-                    {"lat": float(top_atm.latitude), "lng": float(top_atm.longitude)}
-                    if top_atm else None
+                    {"lat": _lat, "lng": _lng}
+                    if (_lat is not None and _lng is not None) else None
                 ),
                 "risk_score": float(top_result.risk_score),
                 "confidence": float(top_result.confidence),

@@ -271,12 +271,27 @@ def run_prediction_pipeline(
     db.add(audit_entry)
     db.commit()
 
-    # Step 8: Return API_SPEC.md response shape
+    # Step 8: Return API_SPEC.md response shape.
+    # Enrich each ML prediction item with ATM bank/area/location from atm_map
+    # (already built in Step 2 — no new query). Mirrors get_latest_prediction_for_crime.
+    enriched_predictions = []
+    for pred in output_predictions:
+        atm = atm_map.get(str(pred.get("atm_id", "")))
+        enriched_predictions.append({
+            **pred,
+            "bank": atm.bank if atm else None,
+            "area": atm.area if atm else None,
+            "location": (
+                {"lat": float(atm.latitude), "lng": float(atm.longitude)}
+                if atm else None
+            ),
+        })
+
     return {
         "crime_id": str(crime.crime_id),
         "generated_at": now_utc.isoformat(),
         "model_version": output_model_version,
-        "predictions": output_predictions,
+        "predictions": enriched_predictions,
         "status": output_status,
     }
 
