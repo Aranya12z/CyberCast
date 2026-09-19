@@ -76,6 +76,8 @@ and computes `txns_last_1h`/`txns_last_6h`/`withdrawal_frequency` itself.
       "geometry": { "type": "Point", "coordinates": [longitude, latitude] },
       "properties": {
         "atm_id": "string",
+        "bank": "string (optional) — institution name, sourced from atms.bank; populated by backend, not computed by GIS",
+        "area": "string (optional) — human-readable locality, sourced from atms.area; populated by backend, not computed by GIS",
         "risk_score": 0.0,
         "confidence": 0.0,
         "predicted_window": { "start": "ISO8601", "end": "ISO8601" },

@@ -62,11 +62,28 @@ def extract_coordinates(location: Union[Dict[str, Any], Tuple[float, float], lis
     else:
         raise ValueError(f"Unsupported location format: {type(location)}. Expected dict, tuple, or list.")
 
+    # Guard: reject boolean and string types before float() cast.
+    # - bool is a Python subclass of int; float(True) == 1.0, which would silently
+    #   produce a nonsensical latitude. Must be checked before isinstance(x, (int, float)).
+    # - Numeric strings (e.g. "28.6") are accepted by float() but indicate a missing
+    #   type-cast in the data pipeline and must surface as an error, not be silently swallowed.
+    for _name, _val in (("lat", raw_lat), ("lng", raw_lng)):
+        if isinstance(_val, bool):
+            raise ValueError(
+                f"Coordinates must be numeric (int or float), not bool. Got {_name}={_val!r}."
+            )
+        if isinstance(_val, str):
+            raise ValueError(
+                f"Coordinates must be numeric (int or float), not str. Got {_name}={_val!r}. "
+                f"Cast to float in the calling layer before passing to extract_coordinates()."
+            )
+
     try:
         lat = float(raw_lat)
         lng = float(raw_lng)
     except (TypeError, ValueError) as err:
         raise ValueError(f"Coordinates must be numeric. Got lat={raw_lat!r}, lng={raw_lng!r}") from err
+
 
     if math.isnan(lat) or math.isnan(lng) or math.isinf(lat) or math.isinf(lng):
         raise ValueError(f"Coordinates cannot be NaN or Infinite. Got lat={lat}, lng={lng}")

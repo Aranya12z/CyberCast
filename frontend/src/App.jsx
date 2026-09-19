@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './state/AppContext';
+import { isTabAllowed, getRoleConfig } from './config/rolePermissions';
+import { LandingPage } from './pages/auth/LandingPage';
+import { LoginPage } from './pages/auth/LoginPage';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
+import { Footer } from './components/layout/Footer';
 import { Overview } from './pages/Overview';
 import { GISMap } from './pages/GISMap';
 import { Predictions } from './pages/Predictions';
@@ -11,7 +15,15 @@ import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsAndConditions } from './pages/TermsAndConditions';
 
 const MainLayout = () => {
-  const { activeTab, setActiveTab } = useApp();
+  const { activeTab, setActiveTab, user } = useApp();
+
+  // Guard against activeTab not permitted for the authenticated role
+  useEffect(() => {
+    if (user?.role && !isTabAllowed(user.role, activeTab)) {
+      const config = getRoleConfig(user.role);
+      setActiveTab(config.defaultTab);
+    }
+  }, [user?.role, activeTab, setActiveTab]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-indigo-600 selection:text-white">
@@ -34,42 +46,36 @@ const MainLayout = () => {
             {activeTab === 'terms' && <TermsAndConditions />}
           </div>
 
-          {/* Bottom Footer with Compliance and Disclaimers */}
-          <footer className="mt-12 pt-4 border-t border-slate-800/80 text-xs text-slate-400 max-w-7xl w-full mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-              <span>CyberCast Research Prototype</span>
-              <span>•</span>
-              <span>Smart India Hackathon (SIH 2026)</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs font-mono">
-              <button
-                onClick={() => setActiveTab('privacy')}
-                className="hover:text-slate-300 transition"
-              >
-                Privacy Policy
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => setActiveTab('terms')}
-                className="hover:text-slate-300 transition"
-              >
-                Terms and Conditions
-              </button>
-            </div>
-          </footer>
+          {/* Global Footer */}
+          <Footer />
         </main>
       </div>
     </div>
   );
 };
 
+const AppContent = () => {
+  const { currentScreen, isAuthenticated } = useApp();
+
+  if (currentScreen === 'login') {
+    return <LoginPage />;
+  }
+
+  if (currentScreen === 'dashboard' && isAuthenticated) {
+    return <MainLayout />;
+  }
+
+  // Default: LandingPage (also returns unauthenticated users to landing screen)
+  return <LandingPage />;
+};
+
 export function App() {
   return (
     <AppProvider>
-      <MainLayout />
+      <AppContent />
     </AppProvider>
   );
 }
 
 export default App;
+
