@@ -48,6 +48,9 @@ The backend only ever calls `.predict(payload)`. It does not know or care if thi
 Full semantics live in `ARCHITECTURE.md` §4 (canonical) and `ML_GIS_CONTRACTS.md` §0. In short: `risk_score` ranks candidates; `confidence` measures how much you trust that ranking for this specific candidate. They are independent outputs, not two names for the same number — your model must be able to produce a high `risk_score` with a low `confidence` when the pattern is strong but the supporting data is thin.
 
 ## Confidence & the "don't fabricate" rule
+Top-K default: 5 candidates.
+This is the intended MVP default for the number of ATM candidates returned/ranked by the ML prediction layer, while the ModelInterface may accept a configurable k value.
+
 **MVP default threshold: if the run's overall confidence falls below 0.35, return:**
 ```json
 { "status": "insufficient_confidence", "predictions": [] }
