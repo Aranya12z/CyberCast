@@ -19,14 +19,15 @@ def seed_pipeline_data(db_session):
     """Seed comprehensive test data mirroring frontend mocks for API verification."""
     now = datetime.now(timezone.utc)
 
-    # ATMs matching frontend mock areas
+    # ATMs — atm1 co-located with crime (distance_from_crime ~0km), historical_risk_score=0.90.
+    # Real model: risk_score ~0.42, confidence ~0.85 -> ADR-006 alert threshold met.
     atm1 = ATM(
         atm_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
-        latitude=12.9341,
-        longitude=77.6258,
+        latitude=12.9352,
+        longitude=77.6245,
         bank="HDFC Bank",
         area="Koramangala 4th Block",
-        historical_risk_score=0.79,
+        historical_risk_score=0.90,
     )
     atm2 = ATM(
         atm_id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
@@ -38,15 +39,16 @@ def seed_pipeline_data(db_session):
     )
     db_session.add_all([atm1, atm2])
 
-    # Transactions
-    t1 = Transaction(
-        transaction_id=uuid.uuid4(),
-        atm_id=atm1.atm_id,
-        timestamp=now,
-        amount=10000.0,
-        account_id="ACC-HDFC-991",
-    )
-    db_session.add(t1)
+    # 8 transactions within the 1h window before crime time
+    from datetime import timedelta
+    for i in range(8):
+        db_session.add(Transaction(
+            transaction_id=uuid.uuid4(),
+            atm_id=atm1.atm_id,
+            timestamp=now - timedelta(minutes=5 * i),
+            amount=10000.0,
+            account_id=f"ACC-HDFC-{i:03d}",
+        ))
 
     # Crime matching frontend mock
     crime = Crime(
@@ -64,7 +66,6 @@ def seed_pipeline_data(db_session):
         "atm1": atm1,
         "atm2": atm2,
         "crime": crime,
-        "txn": t1,
     }
 
 

@@ -15,8 +15,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.domain.alert_generation import evaluate_and_generate_alerts
-from app.interfaces.model_interface import ModelInterface, MockModelInterface
+from app.interfaces.model_interface import ModelInterface
 from app.interfaces.spatial_interface import SpatialService, get_spatial_service
+from ml import inference as ml_inference
 from app.models.atm import ATM
 from app.models.audit_log import AuditLog
 from app.models.crime import Crime
@@ -32,7 +33,7 @@ def ensure_model_metadata(db: Session, model_version: str) -> None:
         meta = ModelMetadata(
             model_version=model_version,
             trained_at=datetime.now(timezone.utc),
-            algorithm="random_forest_mock",
+            algorithm="random_forest",
             eval_metrics={"status": "mvp_scaffold"},
         )
         db.add(meta)
@@ -60,7 +61,9 @@ def run_prediction_pipeline(
     8. Return response shaped per API_SPEC.md
     """
     if model is None:
-        model = MockModelInterface()
+        # [IMPLEMENTED] Real ML inference — loads ml/models/latest.pkl via ml.inference.ModelInterface.
+        # k=5 mirrors the Top-K contract; confidence_floor=0.35 per ML_SPEC.md §Confidence.
+        model = ml_inference.ModelInterface(k=5)
     if spatial_svc is None:
         spatial_svc = get_spatial_service()
 
@@ -292,6 +295,12 @@ def get_latest_prediction_for_crime(
     if not prediction:
         return None
 
+    # Build atm_id → ATM lookup so we can attach bank/area/location
+    # without a per-result query. Mirrors the atm_map pattern in run_prediction_pipeline.
+    atm_ids = [res.atm_id for res in prediction.results]
+    atms_for_results = db.query(ATM).filter(ATM.atm_id.in_(atm_ids)).all()
+    atm_lookup = {atm.atm_id: atm for atm in atms_for_results}
+
     results_data = []
     for res in prediction.results:
         exps = [
@@ -302,8 +311,15 @@ def get_latest_prediction_for_crime(
             }
             for feat in res.features
         ]
+        atm = atm_lookup.get(res.atm_id)
         results_data.append({
             "atm_id": str(res.atm_id),
+            "bank": atm.bank if atm else None,
+            "area": atm.area if atm else None,
+            "location": (
+                {"lat": float(atm.latitude), "lng": float(atm.longitude)}
+                if atm else None
+            ),
             "risk_score": float(res.risk_score),
             "confidence": float(res.confidence),
             "predicted_window": {
