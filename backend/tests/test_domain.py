@@ -78,28 +78,31 @@ def test_prediction_pipeline_end_to_end(db_session):
     """Test the full 8-step synchronous prediction orchestration flow (ARCHITECTURE.md §6)."""
     now = datetime.now(timezone.utc)
 
-    # 1. Create ATM in Bengaluru
+    # 1. Create ATM co-located with crime for maximum distance_from_crime signal.
+    # historical_risk_score=0.90 and 8 txns within 1h produce real model:
+    #   risk_score ~0.42, confidence ~0.85 -> ADR-006 alert threshold (>=0.4, >=0.5) met.
     atm = ATM(
         atm_id=uuid.uuid4(),
-        latitude=12.9720,
-        longitude=77.5950,
+        latitude=12.9716,
+        longitude=77.5946,
         bank="SBI",
         area="MG Road",
-        historical_risk_score=0.60,
+        historical_risk_score=0.90,
     )
     db_session.add(atm)
 
-    # 2. Create Transaction for ATM
-    txn = Transaction(
-        transaction_id=uuid.uuid4(),
-        atm_id=atm.atm_id,
-        timestamp=now,
-        amount=15000.0,
-        account_id="ACC-001",
-    )
-    db_session.add(txn)
+    # 8 transactions within the 1h window before crime time
+    from datetime import timedelta
+    for i in range(8):
+        db_session.add(Transaction(
+            transaction_id=uuid.uuid4(),
+            atm_id=atm.atm_id,
+            timestamp=now - timedelta(minutes=5 * i),
+            amount=15000.0,
+            account_id=f"ACC-{i:03d}",
+        ))
 
-    # 3. Create Crime nearby
+    # 3. Create Crime at same coords
     crime = Crime(
         crime_id=uuid.uuid4(),
         crime_type="atm_fraud",
@@ -259,14 +262,17 @@ def test_alert_generation_adr006_thresholds(db_session):
 
 def test_intelligence_report_assembly(db_session):
     """Test /api/intelligence/{crime_id} assembly matching API_SPEC.md."""
+    from datetime import timedelta
     now = datetime.now(timezone.utc)
+    # ATM co-located with crime (distance_from_crime ~0), historical_risk_score=0.90,
+    # 8 txns within 1h -> real model: risk_score ~0.42, confidence ~0.85 -> alert triggered.
     atm = ATM(
         atm_id=uuid.uuid4(),
         latitude=12.9716,
         longitude=77.5946,
         bank="Canara Bank",
         area="Koramangala",
-        historical_risk_score=0.7,
+        historical_risk_score=0.90,
     )
     db_session.add(atm)
     crime = Crime(
@@ -278,6 +284,14 @@ def test_intelligence_report_assembly(db_session):
         amount=120000.0,
     )
     db_session.add(crime)
+    for i in range(8):
+        db_session.add(Transaction(
+            transaction_id=uuid.uuid4(),
+            atm_id=atm.atm_id,
+            timestamp=now - timedelta(minutes=5 * i),
+            amount=20000.0,
+            account_id=f"ACC-INTEL-{i:03d}",
+        ))
     db_session.commit()
 
     # Run prediction
