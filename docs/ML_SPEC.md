@@ -12,7 +12,7 @@ scikit-learn, Random Forest and/or XGBoost. No deep learning, no AutoML platform
 - Feature generation (from the raw fields the backend gives you)
 - Model loading (offline-trained, saved locally, loaded by the backend/inference module)
 - Inference / prediction scoring
-- Ranking candidates into Top-K
+- Ranking candidates into Top-K (MVP default: K=5, set in `ModelInterface(k=5)` — backend passes this at construction; not currently configurable per crime-type, see `ARCHITECTURE.md` §12 for future scope)
 - Confidence/probability calibration
 - Model versioning — **MVP scope:** a manually incremented string identifier set at training time (e.g. `rf_v1_20260917`), stored alongside its eval metrics in `model_metadata` (`DATA_SCHEMA.md`). This is not a model registry: no automatic tracking, no rollback tooling, no drift detection. Those are `[FUTURE]` per `ARCHITECTURE.md` §16 and §12.
 - Evaluation outputs (offline metrics — precision@K, recall, calibration — documented, not exposed live in MVP)
