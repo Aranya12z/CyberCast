@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.security import require_role
 from app.domain.atm_management import get_atm, get_atms_geojson, list_atms
+from app.models.user import User
 from app.schemas.atm import ATMResponse, GeoJSONFeatureCollection
 
 router = APIRouter(prefix="/atms", tags=["atms"])
@@ -25,6 +27,7 @@ def get_atms(
     format: Optional[str] = Query(None, description="Set to 'geojson' for RFC 7946 FeatureCollection"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_role("investigator", "bank_analyst", "administrator")),
     db: Session = Depends(get_db),
 ):
     """
@@ -49,6 +52,7 @@ def get_atms(
 @router.get("/{atm_id}", response_model=ATMResponse, summary="Get ATM details")
 def get_atm_by_id(
     atm_id: uuid.UUID,
+    current_user: User = Depends(require_role("investigator", "bank_analyst", "administrator")),
     db: Session = Depends(get_db),
 ):
     """Retrieve details of a single ATM."""

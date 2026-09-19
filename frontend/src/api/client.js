@@ -1,6 +1,6 @@
 /**
  * Central API Client for CyberCast Dashboard
- * Conforms strictly to docs/API_SPEC.md
+ * Conforms strictly to docs/API_SPEC.md and docs/BACKEND_SPEC.md
  */
 
 import mockSummary from './mocks/dashboardSummary.json';
@@ -22,7 +22,7 @@ export const apiClient = {
   isMockMode() {
     const stored = localStorage.getItem('cybercast_mock_mode');
     if (stored !== null) return stored === 'true';
-    return true; // Default to mock until backend is verified live
+    return import.meta.env?.VITE_USE_MOCK === 'true';
   },
 
   setMockMode(enable) {
@@ -30,21 +30,135 @@ export const apiClient = {
   },
 
   /**
-   * User auth details
+   * Token and auth state management
+   */
+  getToken() {
+    return localStorage.getItem('cybercast_token');
+  },
+
+  setToken(token) {
+    if (token) {
+      localStorage.setItem('cybercast_token', token);
+    } else {
+      localStorage.removeItem('cybercast_token');
+    }
+  },
+
+  clearAuth() {
+    localStorage.removeItem('cybercast_token');
+    localStorage.removeItem('cybercast_user_role');
+    try {
+      sessionStorage.removeItem('cybercast_session_auth');
+    } catch (_) {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cybercast_auth_expired'));
+    }
+  },
+
+  /**
+   * Central HTTP request helper attaching Authorization: Bearer <token>
+   */
+  async request(path, options = {}) {
+    const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+    const headers = {
+      ...(options.headers || {})
+    };
+
+    const token = this.getToken();
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData) && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(options.body);
+    }
+
+    const res = await fetch(url, {
+      ...options,
+      headers
+    });
+
+    if (res.status === 401 && !path.includes('/auth/login')) {
+      this.clearAuth();
+      const error = new Error('Authentication expired. Please log in again.');
+      error.status = 401;
+      throw error;
+    }
+
+    if (!res.ok) {
+      let errorDetail = `Request failed: ${res.status}`;
+      try {
+        const errorJson = await res.json();
+        if (errorJson?.error?.message) {
+          errorDetail = errorJson.error.message;
+        } else if (errorJson?.detail) {
+          errorDetail = typeof errorJson.detail === 'string' ? errorJson.detail : JSON.stringify(errorJson.detail);
+        }
+      } catch (_) {}
+      const error = new Error(errorDetail);
+      error.status = res.status;
+      throw error;
+    }
+
+    if (res.status === 204) return null;
+    return res.json();
+  },
+
+  /**
+   * User authentication
+   * POST /api/auth/login
+   */
+  async login(username, password) {
+    if (this.isMockMode()) {
+      return {
+        access_token: 'mock-jwt-token',
+        token_type: 'bearer',
+        role: 'investigator'
+      };
+    }
+    const data = await this.request('/auth/login', {
+      method: 'POST',
+      body: { username, password }
+    });
+    if (data?.access_token) {
+      this.setToken(data.access_token);
+      if (data.role) {
+        localStorage.setItem('cybercast_user_role', data.role);
+      }
+    }
+    return data;
+  },
+
+  /**
+   * Invalidate session
+   * POST /api/auth/logout
+   */
+  async logout() {
+    if (!this.isMockMode()) {
+      try {
+        await this.request('/auth/logout', { method: 'POST' });
+      } catch (err) {
+        console.warn('Backend logout call failed:', err);
+      }
+    }
+    this.clearAuth();
+  },
+
+  /**
+   * User auth profile
    * GET /api/auth/me
    */
   async getAuthMe() {
     if (this.isMockMode()) {
       return {
-        user_id: "usr-sharma-901",
-        name: "Inspector Sharma",
-        role: "investigator", // "investigator" | "bank_analyst" | "administrator"
-        department: "Cyber Crime Division, CID"
+        user_id: 'usr-sharma-901',
+        name: 'Inspector Sharma',
+        role: 'investigator',
+        department: 'Cyber Crime Division, CID'
       };
     }
-    const res = await fetch(`${API_BASE}/auth/me`);
-    if (!res.ok) throw new Error(`Auth check failed: ${res.status}`);
-    return res.json();
+    return this.request('/auth/me');
   },
 
   /**
@@ -53,16 +167,13 @@ export const apiClient = {
    */
   async getDashboardSummary() {
     if (this.isMockMode()) {
-      // Calculate dynamic active alert count from local state
       const activeCount = localAlerts.filter(a => a.status === 'new').length;
       return {
         ...mockSummary,
         active_alerts: activeCount
       };
     }
-    const res = await fetch(`${API_BASE}/dashboard/summary`);
-    if (!res.ok) throw new Error(`Dashboard summary failed: ${res.status}`);
-    return res.json();
+    return this.request('/dashboard/summary');
   },
 
   /**
@@ -73,9 +184,7 @@ export const apiClient = {
     if (this.isMockMode()) {
       return mockCrimes;
     }
-    const res = await fetch(`${API_BASE}/crimes`);
-    if (!res.ok) throw new Error(`Fetch crimes failed: ${res.status}`);
-    return res.json();
+    return this.request('/crimes');
   },
 
   /**
@@ -88,9 +197,26 @@ export const apiClient = {
       if (!match) throw new Error(`Crime not found: ${crimeId}`);
       return match;
     }
-    const res = await fetch(`${API_BASE}/crimes/${crimeId}`);
-    if (!res.ok) throw new Error(`Fetch crime ${crimeId} failed: ${res.status}`);
-    return res.json();
+    return this.request(`/crimes/${crimeId}`);
+  },
+
+  /**
+   * Ingest new crime complaint
+   * POST /api/crimes
+   */
+  async createCrime(payload) {
+    if (this.isMockMode()) {
+      const newCrime = {
+        crime_id: `crm-${Date.now().toString().slice(-6)}`,
+        ...payload
+      };
+      mockCrimes.unshift(newCrime);
+      return newCrime;
+    }
+    return this.request('/crimes', {
+      method: 'POST',
+      body: payload
+    });
   },
 
   /**
@@ -99,18 +225,15 @@ export const apiClient = {
    */
   async getPredictions(crimeId) {
     if (this.isMockMode()) {
-      const result = mockPredictions[crimeId] || {
+      return mockPredictions[crimeId] || {
         crime_id: crimeId,
         generated_at: new Date().toISOString(),
-        model_version: "rf_v1_20260917",
+        model_version: 'rf_v1_20260917',
         predictions: [],
-        status: "insufficient_evidence"
+        status: 'insufficient_evidence'
       };
-      return result;
     }
-    const res = await fetch(`${API_BASE}/predictions/${crimeId}`);
-    if (!res.ok) throw new Error(`Fetch predictions failed: ${res.status}`);
-    return res.json();
+    return this.request(`/predictions/${crimeId}`);
   },
 
   /**
@@ -119,16 +242,12 @@ export const apiClient = {
    */
   async triggerPrediction(crimeId) {
     if (this.isMockMode()) {
-      // Simulate pipeline execution latency
       await new Promise(r => setTimeout(r, 600));
       return this.getPredictions(crimeId);
     }
-    const res = await fetch(`${API_BASE}/predictions/${crimeId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+    return this.request(`/predictions/${crimeId}`, {
+      method: 'POST'
     });
-    if (!res.ok) throw new Error(`Trigger prediction failed: ${res.status}`);
-    return res.json();
   },
 
   /**
@@ -142,12 +261,10 @@ export const apiClient = {
       }
       return localAlerts.filter(a => a.severity === filterSeverity);
     }
-    const url = filterSeverity && filterSeverity !== 'all'
-      ? `${API_BASE}/alerts?severity=${filterSeverity}`
-      : `${API_BASE}/alerts`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch alerts failed: ${res.status}`);
-    return res.json();
+    const query = filterSeverity && filterSeverity !== 'all'
+      ? `/alerts?severity=${filterSeverity}`
+      : '/alerts';
+    return this.request(query);
   },
 
   /**
@@ -162,11 +279,9 @@ export const apiClient = {
       }
       return { success: true, alert_id: alertId, status: 'acknowledged' };
     }
-    const res = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, {
+    return this.request(`/alerts/${alertId}/acknowledge`, {
       method: 'POST'
     });
-    if (!res.ok) throw new Error(`Acknowledge alert failed: ${res.status}`);
-    return res.json();
   },
 
   /**
@@ -177,10 +292,9 @@ export const apiClient = {
     if (this.isMockMode()) {
       const dossier = mockIntelligence[crimeId];
       if (dossier) return dossier;
-      // Synthesize fallback for missing entry
       const crime = mockCrimes.find(c => c.crime_id === crimeId) || {
         crime_id: crimeId,
-        crime_type: "Cyber Financial Fraud",
+        crime_type: 'Cyber Financial Fraud',
         timestamp: new Date().toISOString(),
         location: { lat: 12.9716, lng: 77.5946 },
         amount: 50000
@@ -190,8 +304,8 @@ export const apiClient = {
         crime,
         latest_prediction: {
           generated_at: new Date().toISOString(),
-          model_version: "rf_v1_20260917",
-          status: "insufficient_evidence",
+          model_version: 'rf_v1_20260917',
+          status: 'insufficient_evidence',
           top_result: null
         },
         evidence: [],
@@ -199,9 +313,7 @@ export const apiClient = {
         summary: `No high-confidence candidate ATM patterns detected for incident ${crimeId}.`
       };
     }
-    const res = await fetch(`${API_BASE}/intelligence/${crimeId}`);
-    if (!res.ok) throw new Error(`Fetch intelligence failed: ${res.status}`);
-    return res.json();
+    return this.request(`/intelligence/${crimeId}`);
   },
 
   /**
@@ -212,8 +324,6 @@ export const apiClient = {
     if (this.isMockMode()) {
       return mockGeoJSON;
     }
-    const res = await fetch(`${API_BASE}/atms?format=geojson`);
-    if (!res.ok) throw new Error(`Fetch GeoJSON failed: ${res.status}`);
-    return res.json();
+    return this.request('/atms?format=geojson');
   }
 };

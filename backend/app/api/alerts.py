@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.security import require_role
 from app.domain.alert_generation import acknowledge_alert, list_alerts
 from app.models.atm import ATM
+from app.models.user import User
 from app.schemas.alert import AlertAcknowledgeResponse, AlertResponse
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -23,6 +25,7 @@ def get_alerts(
     status: Optional[str] = Query(None, description="Filter by status: new | acknowledged | resolved"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_role("investigator", "bank_analyst", "administrator")),
     db: Session = Depends(get_db),
 ):
     """List alerts with optional severity and status filters."""
@@ -55,10 +58,11 @@ def get_alerts(
 )
 def post_acknowledge_alert(
     alert_id: uuid.UUID,
+    current_user: User = Depends(require_role("investigator", "administrator")),
     db: Session = Depends(get_db),
 ):
     """Acknowledge an alert."""
-    alert = acknowledge_alert(db=db, alert_id=alert_id)
+    alert = acknowledge_alert(db=db, alert_id=alert_id, user_id=current_user.user_id)
     return AlertAcknowledgeResponse(
         success=True,
         alert_id=str(alert.alert_id),

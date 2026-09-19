@@ -204,6 +204,8 @@ def run_prediction_pipeline(
     output_model_version = ml_output.get("model_version", model_version)
 
     # Step 7: Persist predictions & results
+    ensure_model_metadata(db=db, model_version=output_model_version)
+
     prediction_record = Prediction(
         prediction_id=uuid.uuid4(),
         crime_id=crime.crime_id,

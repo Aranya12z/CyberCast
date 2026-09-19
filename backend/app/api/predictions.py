@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit_log
 from app.core.db import get_db
+from app.core.security import require_role
 from app.domain.prediction_orchestration import (
     get_latest_prediction_for_crime,
     run_prediction_pipeline,
 )
+from app.models.user import User
 from app.schemas.prediction import PredictionResponse
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
@@ -28,6 +30,7 @@ router = APIRouter(prefix="/predictions", tags=["predictions"])
 )
 def trigger_prediction(
     crime_id: uuid.UUID,
+    current_user: User = Depends(require_role("investigator", "administrator")),
     db: Session = Depends(get_db),
 ):
     """
@@ -36,7 +39,7 @@ def trigger_prediction(
     Audit: prediction_generated is written inside run_prediction_pipeline()
     (ARCHITECTURE.md §8).
     """
-    return run_prediction_pipeline(db=db, crime_id=crime_id)
+    return run_prediction_pipeline(db=db, crime_id=crime_id, user_id=current_user.user_id)
 
 
 @router.get(
@@ -46,6 +49,7 @@ def trigger_prediction(
 )
 def get_prediction_by_crime(
     crime_id: uuid.UUID,
+    current_user: User = Depends(require_role("investigator", "bank_analyst", "administrator")),
     db: Session = Depends(get_db),
 ):
     """
@@ -63,6 +67,7 @@ def get_prediction_by_crime(
     audit_log(
         db,
         action="prediction_viewed",
+        user_id=current_user.user_id,
         resource=f"crime:{crime_id}",
         metadata={
             "model_version": prediction_data.get("model_version"),

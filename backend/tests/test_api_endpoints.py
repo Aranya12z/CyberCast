@@ -9,15 +9,29 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.security import create_access_token, hash_password
 from app.models.atm import ATM
 from app.models.crime import Crime
 from app.models.transaction import Transaction
+from app.models.user import User
 
 
 @pytest.fixture
-def seed_pipeline_data(db_session):
+def seed_pipeline_data(db_session, client):
     """Seed comprehensive test data mirroring frontend mocks for API verification."""
     now = datetime.now(timezone.utc)
+
+    # Seed an authenticated user for client requests
+    user = User(
+        user_id=uuid.UUID("44444444-4444-4444-4444-444444444444"),
+        name="Pipeline Investigator",
+        role="investigator",
+        password_hash=hash_password("pipeline_pass"),
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = create_access_token({"sub": str(user.user_id), "name": user.name, "role": user.role})
+    client.headers["Authorization"] = f"Bearer {token}"
 
     # ATMs — atm1 co-located with crime (distance_from_crime ~0km), historical_risk_score=0.90.
     # Real model: risk_score ~0.42, confidence ~0.85 -> ADR-006 alert threshold met.
@@ -236,10 +250,10 @@ def test_prediction_and_alert_api_flow(client, seed_pipeline_data):
     assert "recent_activity" in dash
 
 
-def test_standard_error_envelope_404(client):
+def test_standard_error_envelope_404(auth_client):
     """Verify 404 errors return the standard error envelope matching API_SPEC.md."""
     missing_id = "99999999-9999-9999-9999-999999999999"
-    res = client.get(f"/api/crimes/{missing_id}")
+    res = auth_client.get(f"/api/crimes/{missing_id}")
     assert res.status_code == 404
     data = res.json()
     assert "error" in data
@@ -248,10 +262,10 @@ def test_standard_error_envelope_404(client):
     assert isinstance(data["error"]["details"], dict)
 
 
-def test_standard_error_envelope_422_malformed_input(client):
+def test_standard_error_envelope_422_malformed_input(auth_client):
     """Verify malformed input triggers 422 with standard error envelope."""
     # Invalid amount (string instead of float)
-    res = client.post(
+    res = auth_client.post(
         "/api/crimes",
         json={"crime_type": "fraud", "amount": "invalid_number", "location": {"lat": 12.0, "lng": 77.0}},
     )
