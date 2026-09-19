@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.user import User
 
@@ -78,3 +78,42 @@ def seed_users(db_session):
         db_session.add(user)
     db_session.commit()
     return users
+
+
+@pytest.fixture(scope="function")
+def investigator_token(seed_users):
+    u = seed_users["investigator"]
+    return create_access_token({"sub": str(u.user_id), "name": u.name, "role": u.role})
+
+
+@pytest.fixture(scope="function")
+def bank_analyst_token(seed_users):
+    u = seed_users["bank_analyst"]
+    return create_access_token({"sub": str(u.user_id), "name": u.name, "role": u.role})
+
+
+@pytest.fixture(scope="function")
+def admin_token(seed_users):
+    u = seed_users["admin"]
+    return create_access_token({"sub": str(u.user_id), "name": u.name, "role": u.role})
+
+
+@pytest.fixture(scope="function")
+def investigator_headers(investigator_token):
+    return {"Authorization": f"Bearer {investigator_token}"}
+
+
+@pytest.fixture(scope="function")
+def bank_analyst_headers(bank_analyst_token):
+    return {"Authorization": f"Bearer {bank_analyst_token}"}
+
+
+@pytest.fixture(scope="function")
+def admin_headers(admin_token):
+    return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture(scope="function")
+def auth_client(client, investigator_headers):
+    client.headers.update(investigator_headers)
+    return client

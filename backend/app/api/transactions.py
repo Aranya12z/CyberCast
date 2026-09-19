@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.security import require_role
 from app.domain.transaction_management import list_transactions
+from app.models.user import User
 from app.schemas.transaction import TransactionResponse
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -25,6 +27,7 @@ def get_transactions(
     end_time: Optional[datetime] = Query(None, description="Filter by end time (ISO 8601 UTC)"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_role("investigator", "bank_analyst", "administrator")),
     db: Session = Depends(get_db),
 ):
     """Filter transactions by ATM, account, or timestamp range."""

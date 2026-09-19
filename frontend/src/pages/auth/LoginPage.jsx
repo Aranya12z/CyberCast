@@ -8,12 +8,14 @@ import {
   KeyRound, 
   UserCheck, 
   LogIn, 
-  Info,
-  Compass,
-  Check
+  Info, 
+  Compass, 
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { useApp, PROTOTYPE_PROFILES } from '../../state/AppContext';
 import { getRoleConfig } from '../../config/rolePermissions';
+import { apiClient } from '../../api/client';
 
 export const LoginPage = () => {
   const { selectedLoginRole, setCurrentScreen, loginAsRole } = useApp();
@@ -23,10 +25,11 @@ export const LoginPage = () => {
   const roleConfig = getRoleConfig(roleKey);
   const prototypeProfile = PROTOTYPE_PROFILES[roleKey] || PROTOTYPE_PROFILES.investigator;
 
-  // Form mock state for interactive feel during demonstration
-  const [operatorId, setOperatorId] = useState(prototypeProfile.user_id);
-  const [pinCode, setPinCode] = useState('••••••••');
+  // Form state matching backend LoginRequest schema (username / password)
+  const [username, setUsername] = useState(roleKey);
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Role visual accents and domain-tailored labels
   const roleVisuals = {
@@ -36,8 +39,8 @@ export const LoginPage = () => {
       icon: ShieldAlert,
       iconColor: 'text-blue-400 bg-blue-950/60 border-blue-500/30',
       cardBorder: 'border-slate-800 hover:border-blue-500/30',
-      idLabel: 'Officer Badge / CID Identifier',
-      pinLabel: 'Authorization Access PIN',
+      idLabel: 'Officer Username / CID Identifier',
+      pinLabel: 'Password',
       destinationHint: 'GIS Risk Map (6-Hr Horizon)',
       submitLabel: `Authenticate Session — ${prototypeProfile.name} (CID)`,
       submittingLabel: 'Authorizing Law Enforcement Session...',
@@ -50,8 +53,8 @@ export const LoginPage = () => {
       icon: Building2,
       iconColor: 'text-emerald-400 bg-emerald-950/60 border-emerald-500/30',
       cardBorder: 'border-slate-800 hover:border-emerald-500/30',
-      idLabel: 'Analyst Identifier / Employee ID',
-      pinLabel: 'Fraud Operations Access PIN',
+      idLabel: 'Analyst Username / Employee ID',
+      pinLabel: 'Password',
       destinationHint: 'Top-K Predictions (ATM Cash-out)',
       submitLabel: `Authenticate Session — ${prototypeProfile.name} (Banking)`,
       submittingLabel: 'Authorizing Financial Institution Session...',
@@ -64,8 +67,8 @@ export const LoginPage = () => {
       icon: Terminal,
       iconColor: 'text-amber-400 bg-amber-950/60 border-amber-500/30',
       cardBorder: 'border-slate-800 hover:border-amber-500/30',
-      idLabel: 'System Administrator Identifier',
-      pinLabel: 'Console Key / PIN',
+      idLabel: 'System Administrator Username',
+      pinLabel: 'Password',
       destinationHint: 'System Overview & Telemetry',
       submitLabel: `Authenticate Session — ${prototypeProfile.name} (Ops)`,
       submittingLabel: 'Authorizing Administrator Session...',
@@ -77,13 +80,53 @@ export const LoginPage = () => {
   const visual = roleVisuals[roleKey] || roleVisuals.investigator;
   const RoleIcon = visual.icon;
 
-  const handleDemoSignIn = (e) => {
+  const handleSignIn = async (e) => {
     if (e) e.preventDefault();
+    if (!username.trim() || !password) {
+      setErrorMessage('Please enter both username and password.');
+      return;
+    }
+
     setIsSubmitting(true);
-    // Simulate brief validation feedback for demonstration
-    setTimeout(() => {
-      loginAsRole(roleKey);
-    }, 250);
+    setErrorMessage('');
+
+    try {
+      // Real login call to backend POST /api/auth/login
+      const tokenData = await apiClient.login(username.trim(), password);
+      
+      // Fetch authenticated user profile from GET /api/auth/me
+      let userProfile = null;
+      try {
+        const me = await apiClient.getAuthMe();
+        userProfile = {
+          user_id: me.user_id,
+          name: me.name,
+          role: me.role,
+          department: me.role === 'investigator'
+            ? 'Cyber Crime Division, CID'
+            : me.role === 'bank_analyst'
+            ? 'Fraud Monitoring & Operations'
+            : 'CyberCast Operations Command'
+        };
+      } catch (_) {
+        userProfile = {
+          user_id: `usr-${tokenData.role}`,
+          name: username,
+          role: tokenData.role
+        };
+      }
+
+      // Drive session strictly from server-returned role
+      loginAsRole(tokenData.role, userProfile);
+    } catch (err) {
+      if (err.status === 401 || err.message?.includes('401') || err.message?.includes('Incorrect')) {
+        setErrorMessage('Incorrect username or password. Please verify credentials.');
+      } else {
+        setErrorMessage(err.message || 'Authentication service unreachable. Please check network connection.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -153,7 +196,7 @@ export const LoginPage = () => {
               <span className="text-slate-400 uppercase tracking-wider">OPERATOR PROFILE:</span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 text-indigo-300 font-semibold border border-indigo-500/20 text-[10px]">
                 <Check className="w-3 h-3 text-indigo-400" />
-                VERIFIED DEMO ID
+                VERIFIED ACCESS
               </span>
             </div>
 
@@ -166,63 +209,67 @@ export const LoginPage = () => {
                   {prototypeProfile.name}
                 </div>
                 <div className="text-[11px] font-mono text-slate-400">
-                  ID: {prototypeProfile.user_id} {prototypeProfile.bank_name ? `• ${prototypeProfile.bank_name}` : ''}
+                  Role: {roleKey} {prototypeProfile.bank_name ? `• ${prototypeProfile.bank_name}` : ''}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Simulated Login Form */}
-          <form onSubmit={handleDemoSignIn} className="space-y-4">
+          {/* Error Message Display */}
+          {errorMessage && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 flex items-center gap-2.5 text-xs text-rose-300">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Real Login Form */}
+          <form onSubmit={handleSignIn} className="space-y-4">
             
-            {/* Operator Identifier Input */}
+            {/* Username Input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="operator-id-input" className="text-xs font-mono text-slate-300 uppercase tracking-wide">
+                <label htmlFor="username-input" className="text-xs font-mono text-slate-300 uppercase tracking-wide">
                   {visual.idLabel}
                 </label>
-                <span className="text-[10px] font-mono text-indigo-400 bg-indigo-950/40 border border-indigo-500/20 px-1.5 py-0.2 rounded">
-                  AUTO-FILLED FOR DEMO
-                </span>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <UserCheck className="w-4 h-4" />
                 </div>
                 <input
-                  id="operator-id-input"
+                  id="username-input"
                   type="text"
-                  autoComplete="off"
-                  value={operatorId}
-                  onChange={(e) => setOperatorId(e.target.value)}
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className={`w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-500 ${visual.focusRing} focus:outline-none transition-all duration-150`}
-                  placeholder="Officer / Analyst Identifier"
+                  placeholder="Enter username"
+                  required
                 />
               </div>
             </div>
 
-            {/* Access Token Input */}
+            {/* Password Input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="operator-pin-input" className="text-xs font-mono text-slate-300 uppercase tracking-wide">
+                <label htmlFor="password-input" className="text-xs font-mono text-slate-300 uppercase tracking-wide">
                   {visual.pinLabel}
                 </label>
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-800 px-1.5 py-0.2 rounded">
-                  AUTHORIZED KEY
-                </span>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <KeyRound className="w-4 h-4" />
                 </div>
                 <input
-                  id="operator-pin-input"
+                  id="password-input"
                   type="password"
-                  autoComplete="off"
-                  value={pinCode}
-                  onChange={(e) => setPinCode(e.target.value)}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className={`w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-100 placeholder-slate-500 ${visual.focusRing} focus:outline-none transition-all duration-150`}
-                  placeholder="Security Access Key"
+                  placeholder="Enter password"
+                  required
                 />
               </div>
             </div>
@@ -256,8 +303,8 @@ export const LoginPage = () => {
           <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-800/80 flex items-start gap-2.5 text-[11px] text-slate-400 leading-relaxed">
             <Info className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-slate-300">SIH Evaluation Mode: </span>
-              Prototype demonstration of role-based access control. Authenticating loads the verified stakeholder profile, initializes session persistence, and isolates navigation according to the CyberCast RBAC matrix.
+              <span className="font-semibold text-slate-300">RBAC Enforcement: </span>
+              Authentication issues a secure JWT token from the backend. The server-validated role isolates capabilities, panel routing, and write operations across the CyberCast platform.
             </div>
           </div>
 
@@ -273,4 +320,3 @@ export const LoginPage = () => {
     </div>
   );
 };
-

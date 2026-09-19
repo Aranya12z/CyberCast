@@ -66,17 +66,43 @@ export const AppProvider = ({ children }) => {
   const [isMockMode, setIsMockMode] = useState(apiClient.isMockMode());
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Listen for auth expiration events from apiClient
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setIsAuthenticated(false);
+      setSelectedLoginRole(null);
+      setCurrentScreen('landing');
+      setUser(PROTOTYPE_PROFILES.investigator);
+      setActiveTab('overview');
+    };
+
+    window.addEventListener('cybercast_auth_expired', handleAuthExpired);
+    return () => {
+      window.removeEventListener('cybercast_auth_expired', handleAuthExpired);
+    };
+  }, []);
+
   // Optional sync with backend auth if mock mode is disabled
   useEffect(() => {
-    if (!apiClient.isMockMode() && isAuthenticated) {
+    if (!apiClient.isMockMode() && isAuthenticated && apiClient.getToken()) {
       apiClient.getAuthMe()
         .then(data => {
           if (data && data.role) {
-            setUser(prev => ({ ...prev, ...data }));
+            setUser(prev => ({
+              ...prev,
+              user_id: data.user_id,
+              name: data.name,
+              role: data.role,
+              department: data.role === 'investigator'
+                ? 'Cyber Crime Division, CID'
+                : data.role === 'bank_analyst'
+                ? 'Fraud Monitoring & Operations'
+                : 'CyberCast Operations Command'
+            }));
           }
         })
         .catch(() => {
-          // Backend auth not reached; keep existing session user
+          // Handled by 401 interceptor in apiClient
         });
     }
   }, [refreshTrigger, isAuthenticated]);
@@ -95,13 +121,14 @@ export const AppProvider = ({ children }) => {
   };
 
   /**
-   * Prototype login action: sets authenticated role profile and persists session
+   * Login action: sets authenticated role profile and persists session
    * @param {string} role
-   * @param {object} credentials
+   * @param {object} customProfile
    */
-  const loginAsRole = (role, credentials = {}) => {
+  const loginAsRole = (role, customProfile = null) => {
     const targetRole = ROLE_PERMISSIONS[role] ? role : 'investigator';
-    const profile = PROTOTYPE_PROFILES[targetRole] || PROTOTYPE_PROFILES.investigator;
+    const baseProfile = PROTOTYPE_PROFILES[targetRole] || PROTOTYPE_PROFILES.investigator;
+    const profile = customProfile ? { ...baseProfile, ...customProfile, role: targetRole } : baseProfile;
     const roleConfig = getRoleConfig(targetRole);
 
     setUser(profile);
@@ -125,9 +152,10 @@ export const AppProvider = ({ children }) => {
   };
 
   /**
-   * Prototype logout action: clears session and returns to landing portal
+   * Logout action: clears token, session, and returns to landing portal
    */
   const logout = () => {
+    apiClient.logout();
     setIsAuthenticated(false);
     setSelectedLoginRole(null);
     setCurrentScreen('landing');
